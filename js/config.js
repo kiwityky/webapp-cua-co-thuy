@@ -1,7 +1,7 @@
 // Điền 2 giá trị lấy từ Supabase > Project Settings > API.
 // anon key được phép công khai vì mọi bảng đã bật Row Level Security.
-export const SUPABASE_URL = 'https://YOUR-PROJECT.supabase.co';
-export const SUPABASE_ANON_KEY = 'YOUR-ANON-KEY';
+export const SUPABASE_URL = 'https://gaaomvsffcscvciooqle.supabase.co';
+export const SUPABASE_ANON_KEY = 'sb_publishable_t22pzf7jVzm8Mbtum1MOoQ_21lZaiTR';
 
 export const SHOP = {
   name: 'Cua Cô Thúy',
