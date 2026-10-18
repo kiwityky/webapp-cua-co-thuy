@@ -222,6 +222,7 @@
           </div>
           <div>${o.order_items.map((i) => `${esc(i.product_name)} × ${esc(i.quantity)} ${esc(i.unit)}`).join(', ')}</div>
           <div class="muted">${esc(o.address)}${o.note ? ' · ' + esc(o.note) : ''}</div>
+          ${o.delivery_time ? `<div>Giao: <b>${esc(o.delivery_time)}</b></div>` : ''}
           <div class="row" style="justify-content:space-between">
             <b>${esc(money(o.total))}</b>
             ${o.points_awarded ? `<span>+${esc(o.points_awarded)} điểm</span>` : ''}

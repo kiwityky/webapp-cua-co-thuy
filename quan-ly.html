@@ -130,13 +130,14 @@
 
       const st = $('#fStatus').value, q = $('#fSearch').value.trim().toLowerCase();
       const rows = orders.filter((o) => (!st || o.status === st) &&
-        (!q || [o.id, o.customer_name, o.phone, o.address].join(' ').toLowerCase().includes(q)));
+        (!q || [o.id, o.customer_name, o.phone, o.address, o.delivery_time].join(' ').toLowerCase().includes(q)));
       $('#orderRows').innerHTML = rows.map((o) => `
         <tr>
           <td><b>#${o.id}</b><br><span class="muted">${when(o.created_at)}</span><br>
               <span class="muted">${o.created_by === o.customer_id ? 'Khách tự đặt' : 'Tạo bởi ' + esc(o.creator?.full_name || 'nhân viên')}</span><br>
               <button type="button" class="btn small" data-edit="${o.id}">Sửa đơn</button></td>
           <td><b>${esc(o.customer_name)}</b><br><a href="tel:${esc(o.phone)}">${esc(o.phone)}</a><br>${esc(o.address)}
+              ${o.delivery_time ? `<br><b>Giao: ${esc(o.delivery_time)}</b>` : ''}
               ${o.customer_id ? '<br><span class="badge">Thành viên</span>' : ''}</td>
           <td>${o.order_items.map((i) => `${esc(i.product_name)} × ${i.quantity} ${esc(i.unit)}`).join('<br>')}<br><b>${money(o.total)}</b></td>
           <td>${o.note ? `<div>Khách: ${esc(o.note)}</div>` : ''}
@@ -182,7 +183,8 @@
           <label>Địa chỉ giao<textarea name="address" required maxlength="300">${esc(o.address)}</textarea></label>
           <div id="editLines"></div>
           <button type="button" class="btn small" id="editAddLine">+ Thêm loại cua</button>
-          <label style="margin-top:10px">Ghi chú của khách<textarea name="note" maxlength="500">${esc(o.note)}</textarea></label>
+          <label style="margin-top:10px">Thời gian giao<input name="delivery_time" maxlength="100" value="${esc(o.delivery_time)}" placeholder="VD: 9h sáng 19/10"></label>
+          <label>Ghi chú của khách<textarea name="note" maxlength="500">${esc(o.note)}</textarea></label>
           ${o.status === 'da_giao' && o.customer_id ? '<p class="muted">Đơn đã giao: điểm của khách sẽ tự điều chỉnh theo tổng tiền mới.</p>' : ''}
           <div class="row" style="justify-content:space-between">
             <b>Tổng: <span id="editSum">0đ</span></b>
@@ -231,7 +233,7 @@
         btn.disabled = true;
         const { error } = await sb.rpc('update_order', {
           p_order: o.id, p_customer_name: f.name, p_phone: f.phone, p_address: f.address,
-          p_note: f.note || null, p_items: items,
+          p_note: f.note || null, p_items: items, p_delivery_time: f.delivery_time || null,
         });
         btn.disabled = false;
         if (error) return toast(error.message, true);

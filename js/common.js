@@ -24,7 +24,7 @@ if (configured) {
 
 // Bảng giá mặc định (id 1..6 khớp thứ tự seed trong supabase/schema.sql)
 export const FALLBACK_PRODUCTS = Object.freeze([
-  { id: 1, name: 'Cua dơn',  description: '5–6 con/kg',               price: 240000, unit: 'kg', badge: null,       sort: 1, active: true },
+  { id: 1, name: 'Cua don',  description: '5–6 con/kg',               price: 240000, unit: 'kg', badge: null,       sort: 1, active: true },
   { id: 2, name: 'Cua tứ',   description: '4 con/kg',                 price: 340000, unit: 'kg', badge: null,       sort: 2, active: true },
   { id: 3, name: 'Cua Y3',   description: 'Khoảng 3 lạng/con',        price: 410000, unit: 'kg', badge: null,       sort: 3, active: true },
   { id: 4, name: 'Cua Y5',   description: 'Khoảng 5 lạng/con',        price: 590000, unit: 'kg', badge: null,       sort: 4, active: true },

@@ -47,6 +47,7 @@ create table if not exists public.orders (
   created_at     timestamptz not null default now(),
   updated_at     timestamptz not null default now()
 );
+alter table public.orders add column if not exists delivery_time text;  -- thời gian giao khách hẹn
 create index if not exists orders_customer_idx on public.orders(customer_id);
 create index if not exists orders_status_idx   on public.orders(status, created_at desc);
 
@@ -126,9 +127,11 @@ create trigger order_points before update on public.orders
 
 -- ---------- Tạo đơn: giá luôn lấy từ bảng products (khách không sửa giá được) ----------
 -- p_items: [{"product_id": 1, "quantity": 1.5}, ...]
+-- Bản cũ chưa có thời gian giao: xóa để không bị trùng hàm khi gọi
+drop function if exists public.create_order(text,text,text,text,jsonb,uuid);
 create or replace function public.create_order(
   p_customer_name text, p_phone text, p_address text, p_note text,
-  p_items jsonb, p_customer_id uuid default null
+  p_items jsonb, p_customer_id uuid default null, p_delivery_time text default null
 ) returns bigint
 language plpgsql security definer set search_path = public as $$
 declare
@@ -141,7 +144,8 @@ begin
     raise exception 'Thiếu tên, số điện thoại hoặc địa chỉ';
   end if;
   if length(p_customer_name) > 100 or length(p_phone) > 20
-     or length(p_address) > 300 or length(coalesce(p_note,'')) > 500 then
+     or length(p_address) > 300 or length(coalesce(p_note,'')) > 500
+     or length(coalesce(p_delivery_time,'')) > 100 then
     raise exception 'Thông tin quá dài';
   end if;
   if jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items) = 0 then
@@ -159,8 +163,9 @@ begin
     v_cust := auth.uid();
   end if;
 
-  insert into orders (customer_id, customer_name, phone, address, note, created_by)
-  values (v_cust, trim(p_customer_name), trim(p_phone), trim(p_address), p_note, auth.uid())
+  insert into orders (customer_id, customer_name, phone, address, note, delivery_time, created_by)
+  values (v_cust, trim(p_customer_name), trim(p_phone), trim(p_address), p_note,
+          nullif(trim(coalesce(p_delivery_time,'')),''), auth.uid())
   returning id into v_order;
 
   for it in select * from jsonb_array_elements(p_items) loop
@@ -181,9 +186,10 @@ end $$;
 -- Dòng hàng giữ nguyên đơn giá cũ nếu cùng sản phẩm; sản phẩm mới thêm vào lấy giá hiện tại.
 -- Đơn đã giao: điểm của khách được cộng/trừ phần chênh lệch cho khớp tổng tiền mới.
 -- p_items: [{"product_id": 1, "quantity": 1.5}, ...]
+drop function if exists public.update_order(bigint,text,text,text,text,jsonb);
 create or replace function public.update_order(
   p_order bigint, p_customer_name text, p_phone text, p_address text, p_note text,
-  p_items jsonb
+  p_items jsonb, p_delivery_time text default null
 ) returns void
 language plpgsql security definer set search_path = public as $$
 declare
@@ -198,7 +204,8 @@ begin
     raise exception 'Thiếu tên, số điện thoại hoặc địa chỉ';
   end if;
   if length(p_customer_name) > 100 or length(p_phone) > 20
-     or length(p_address) > 300 or length(coalesce(p_note,'')) > 500 then
+     or length(p_address) > 300 or length(coalesce(p_note,'')) > 500
+     or length(coalesce(p_delivery_time,'')) > 100 then
     raise exception 'Thông tin quá dài';
   end if;
   if jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items) = 0 then
@@ -233,6 +240,7 @@ begin
 
   update orders set customer_name = trim(p_customer_name), phone = trim(p_phone),
     address = trim(p_address), note = nullif(trim(coalesce(p_note,'')),''),
+    delivery_time = nullif(trim(coalesce(p_delivery_time,'')),''),
     total = v_total, points_awarded = v_new
   where id = p_order;
 end $$;
@@ -317,14 +325,14 @@ create policy p_items_write on public.order_items for all
   using (is_staff()) with check (is_staff());
 
 -- Quyền gọi hàm
-revoke execute on function public.create_order(text,text,text,text,jsonb,uuid) from anon, public;
+revoke execute on function public.create_order(text,text,text,text,jsonb,uuid,text) from anon, public;
 revoke execute on function public.cancel_my_order(bigint) from anon, public;
-revoke execute on function public.update_order(bigint,text,text,text,text,jsonb) from anon, public;
+revoke execute on function public.update_order(bigint,text,text,text,text,jsonb,text) from anon, public;
 revoke execute on function public.set_role(text,text) from anon, public;
 revoke execute on function public.list_staff() from anon, public;
-grant  execute on function public.create_order(text,text,text,text,jsonb,uuid) to authenticated;
+grant  execute on function public.create_order(text,text,text,text,jsonb,uuid,text) to authenticated;
 grant  execute on function public.cancel_my_order(bigint) to authenticated;
-grant  execute on function public.update_order(bigint,text,text,text,text,jsonb) to authenticated;
+grant  execute on function public.update_order(bigint,text,text,text,text,jsonb,text) to authenticated;
 grant  execute on function public.set_role(text,text) to authenticated;
 grant  execute on function public.list_staff() to authenticated;
 
@@ -340,7 +348,7 @@ on conflict (key) do nothing;
 
 insert into public.products (name, description, price, badge, sort)
 select * from (values
-  ('Cua dơn',  '5–6 con/kg',               240000, null,       1),
+  ('Cua don',  '5–6 con/kg',               240000, null,       1),
   ('Cua tứ',   '4 con/kg',                 340000, null,       2),
   ('Cua Y3',   'Khoảng 3 lạng/con',        410000, null,       3),
   ('Cua Y5',   'Khoảng 5 lạng/con',        590000, null,       4),
@@ -348,3 +356,6 @@ select * from (values
   ('Cua gạch', '3–4 con/kg · gạch son đỏ', 600000, 'Đặc biệt', 6)
 ) v(name, description, price, badge, sort)
 where not exists (select 1 from public.products);
+
+-- Sửa tên sản phẩm (18/10/2026): "Cua dơn" -> "Cua don" cho khớp bảng giá
+update public.products set name = 'Cua don' where name = 'Cua dơn';

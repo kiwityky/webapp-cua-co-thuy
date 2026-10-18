@@ -20,7 +20,7 @@ export const IMAGES = {
 
 // Khớp theo products.name (xem supabase/schema.sql)
 export const PRODUCT_IMAGES = {
-  'Cua dơn': 'cua-song-day-rut',
+  'Cua don': 'cua-song-day-rut',
   'Cua tứ': 'gach-vang',
   'Cua Y3': 'thit-chac',
   'Cua Y5': 'cang-chac',
