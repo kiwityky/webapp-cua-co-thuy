@@ -177,6 +177,66 @@ begin
   return v_order;
 end $$;
 
+-- Nhân viên sửa đơn đã tạo: thông tin khách + danh sách hàng.
+-- Dòng hàng giữ nguyên đơn giá cũ nếu cùng sản phẩm; sản phẩm mới thêm vào lấy giá hiện tại.
+-- Đơn đã giao: điểm của khách được cộng/trừ phần chênh lệch cho khớp tổng tiền mới.
+-- p_items: [{"product_id": 1, "quantity": 1.5}, ...]
+create or replace function public.update_order(
+  p_order bigint, p_customer_name text, p_phone text, p_address text, p_note text,
+  p_items jsonb
+) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  o orders%rowtype; v_total integer := 0; v_max bigint; v_old integer; v_new integer; rate integer;
+  it jsonb; pr products%rowtype; q numeric; v_price integer;
+begin
+  if not is_staff() then raise exception 'Chỉ nhân viên'; end if;
+  select * into o from orders where id = p_order for update;
+  if not found then raise exception 'Không tìm thấy đơn'; end if;
+  if coalesce(trim(p_customer_name),'') = '' or coalesce(trim(p_phone),'') = ''
+     or coalesce(trim(p_address),'') = '' then
+    raise exception 'Thiếu tên, số điện thoại hoặc địa chỉ';
+  end if;
+  if length(p_customer_name) > 100 or length(p_phone) > 20
+     or length(p_address) > 300 or length(coalesce(p_note,'')) > 500 then
+    raise exception 'Thông tin quá dài';
+  end if;
+  if jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items) = 0 then
+    raise exception 'Đơn chưa có sản phẩm';
+  end if;
+  if jsonb_array_length(p_items) > 20 then
+    raise exception 'Đơn có quá nhiều dòng sản phẩm';
+  end if;
+
+  select coalesce(max(id),0) into v_max from order_items where order_id = p_order;
+
+  for it in select * from jsonb_array_elements(p_items) loop
+    select * into pr from products where id = (it->>'product_id')::bigint;
+    if not found then raise exception 'Sản phẩm không tồn tại'; end if;
+    q := (it->>'quantity')::numeric;
+    if q is null or q <= 0 or q > 100 then raise exception 'Số lượng không hợp lệ'; end if;
+    select unit_price into v_price from order_items
+      where order_id = p_order and product_id = pr.id and id <= v_max order by id limit 1;
+    v_price := coalesce(v_price, pr.price);
+    insert into order_items (order_id, product_id, product_name, unit_price, quantity, unit)
+    values (p_order, pr.id, pr.name, v_price, q, pr.unit);
+    v_total := v_total + round(v_price * q);
+  end loop;
+  delete from order_items where order_id = p_order and id <= v_max;
+
+  v_new := o.points_awarded;
+  if o.status = 'da_giao' and o.customer_id is not null then
+    select coalesce(value::int, 10000) into rate from settings where key = 'vnd_per_point';
+    v_new := floor(v_total / greatest(coalesce(rate,10000),1));
+    update profiles set points = greatest(points + v_new - o.points_awarded, 0) where id = o.customer_id;
+  end if;
+
+  update orders set customer_name = trim(p_customer_name), phone = trim(p_phone),
+    address = trim(p_address), note = nullif(trim(coalesce(p_note,'')),''),
+    total = v_total, points_awarded = v_new
+  where id = p_order;
+end $$;
+
 -- Khách tự hủy đơn khi đơn còn "mới"
 create or replace function public.cancel_my_order(p_order bigint) returns void
 language plpgsql security definer set search_path = public as $$
@@ -259,10 +319,12 @@ create policy p_items_write on public.order_items for all
 -- Quyền gọi hàm
 revoke execute on function public.create_order(text,text,text,text,jsonb,uuid) from anon, public;
 revoke execute on function public.cancel_my_order(bigint) from anon, public;
+revoke execute on function public.update_order(bigint,text,text,text,text,jsonb) from anon, public;
 revoke execute on function public.set_role(text,text) from anon, public;
 revoke execute on function public.list_staff() from anon, public;
 grant  execute on function public.create_order(text,text,text,text,jsonb,uuid) to authenticated;
 grant  execute on function public.cancel_my_order(bigint) to authenticated;
+grant  execute on function public.update_order(bigint,text,text,text,text,jsonb) to authenticated;
 grant  execute on function public.set_role(text,text) to authenticated;
 grant  execute on function public.list_staff() to authenticated;
 

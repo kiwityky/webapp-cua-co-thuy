@@ -17,6 +17,8 @@
       <a href="#" data-tab="new">Tạo đơn hộ</a>
       <a href="#" data-tab="products">Sản phẩm</a>
       <a href="#" data-tab="admin" class="admin-only hidden">Nhân viên</a>
+      <a href="./">Trang chủ</a>
+      <a href="tai-khoan.html">Xem trang khách</a>
       <a href="#" id="logout">Đăng xuất</a>
     </nav>
   </div></div>
@@ -132,7 +134,8 @@
       $('#orderRows').innerHTML = rows.map((o) => `
         <tr>
           <td><b>#${o.id}</b><br><span class="muted">${when(o.created_at)}</span><br>
-              <span class="muted">${o.created_by === o.customer_id ? 'Khách tự đặt' : 'Tạo bởi ' + esc(o.creator?.full_name || 'nhân viên')}</span></td>
+              <span class="muted">${o.created_by === o.customer_id ? 'Khách tự đặt' : 'Tạo bởi ' + esc(o.creator?.full_name || 'nhân viên')}</span><br>
+              <button type="button" class="btn small" data-edit="${o.id}">Sửa đơn</button></td>
           <td><b>${esc(o.customer_name)}</b><br><a href="tel:${esc(o.phone)}">${esc(o.phone)}</a><br>${esc(o.address)}
               ${o.customer_id ? '<br><span class="badge">Thành viên</span>' : ''}</td>
           <td>${o.order_items.map((i) => `${esc(i.product_name)} × ${i.quantity} ${esc(i.unit)}`).join('<br>')}<br><b>${money(o.total)}</b></td>
@@ -145,6 +148,8 @@
 
       $('#orderRows').querySelectorAll('[data-status]').forEach((s) => s.onchange = () =>
         updateOrder(s.dataset.status, { status: s.value }));
+      $('#orderRows').querySelectorAll('[data-edit]').forEach((b) => b.onclick = () =>
+        editOrder(orders.find((o) => o.id == b.dataset.edit)));
       $('#orderRows').querySelectorAll('[data-note]').forEach((t) => t.onchange = () =>
         updateOrder(t.dataset.note, { staff_note: t.value }));
     }
@@ -152,6 +157,89 @@
     async function updateOrder(id, patch) {
       const { error } = await sb.from('orders').update(patch).eq('id', id);
       error ? toast(error.message, true) : toast(`Đã cập nhật đơn #${id}`);
+    }
+
+    // ---------- Sửa đơn đã tạo ----------
+    async function editOrder(o) {
+      if (!o) return;
+      const { data: products, error } = await sb.from('products').select('*').order('sort');
+      if (error) return toast(error.message, true);
+      let d = $('#editDialog');
+      if (!d) {
+        d = document.createElement('dialog');
+        d.id = 'editDialog';
+        d.className = 'login-dialog edit-dialog';
+        document.body.append(d);
+        d.addEventListener('click', (e) => { if (e.target === d) d.close(); });
+      }
+      const opts = products.map((p) => `<option value="${p.id}">${esc(p.name)} – ${money(p.price)}/${esc(p.unit)}${p.active ? '' : ' (ngừng bán)'}</option>`).join('');
+      d.innerHTML = `
+        <button type="button" class="dlg-close" aria-label="Đóng">×</button>
+        <form class="dlg-body" id="editForm">
+          <h3>Sửa đơn #${o.id}</h3>
+          <label>Tên người nhận<input name="name" required maxlength="100" value="${esc(o.customer_name)}"></label>
+          <label>Số điện thoại<input name="phone" required maxlength="20" inputmode="tel" value="${esc(o.phone)}"></label>
+          <label>Địa chỉ giao<textarea name="address" required maxlength="300">${esc(o.address)}</textarea></label>
+          <div id="editLines"></div>
+          <button type="button" class="btn small" id="editAddLine">+ Thêm loại cua</button>
+          <label style="margin-top:10px">Ghi chú của khách<textarea name="note" maxlength="500">${esc(o.note)}</textarea></label>
+          ${o.status === 'da_giao' && o.customer_id ? '<p class="muted">Đơn đã giao: điểm của khách sẽ tự điều chỉnh theo tổng tiền mới.</p>' : ''}
+          <div class="row" style="justify-content:space-between">
+            <b>Tổng: <span id="editSum">0đ</span></b>
+            <button class="btn btn-red primary" type="submit">Lưu thay đổi</button>
+          </div>
+        </form>`;
+      $('.dlg-close', d).onclick = () => d.close();
+      const lines = $('#editLines', d);
+      const priceOf = (pid) => o.order_items.find((i) => i.product_id == pid)?.unit_price
+        ?? products.find((p) => p.id == pid)?.price ?? 0;
+      const recalc = () => {
+        let s = 0;
+        lines.querySelectorAll('.item-line').forEach((l) =>
+          s += priceOf($('select', l).value) * (parseFloat($('input', l).value) || 0));
+        $('#editSum', d).textContent = money(Math.round(s));
+      };
+      const addLine = (item) => {
+        const l = document.createElement('div');
+        l.className = 'item-line';
+        l.innerHTML = `<label>Loại cua<select>${opts}</select></label>
+          <label>Số kg<input type="number" min="0.1" step="0.1" max="100" value="1"></label>
+          <button type="button" class="btn small" title="Xóa" aria-label="Xóa dòng">×</button>`;
+        if (item) {
+          $('select', l).value = String(item.product_id);
+          $('input', l).value = String(parseFloat(item.quantity));
+        }
+        $('button', l).onclick = () => { l.remove(); recalc(); };
+        l.oninput = recalc;
+        lines.append(l);
+        recalc();
+      };
+      const keep = o.order_items.filter((i) => products.some((p) => p.id == i.product_id));
+      if (keep.length < o.order_items.length) toast('Có dòng hàng của sản phẩm đã bị xóa khỏi danh mục, dòng đó sẽ bị bỏ khi lưu.', true);
+      keep.forEach(addLine);
+      if (!keep.length) addLine();
+      $('#editAddLine', d).onclick = () => addLine();
+
+      $('#editForm', d).onsubmit = async (e) => {
+        e.preventDefault();
+        const f = Object.fromEntries(new FormData(e.target));
+        const items = [...lines.querySelectorAll('.item-line')].map((l) => ({
+          product_id: Number($('select', l).value), quantity: parseFloat($('input', l).value),
+        })).filter((i) => i.quantity > 0);
+        if (!items.length) return toast('Chưa chọn sản phẩm', true);
+        const btn = $('button[type=submit]', e.target);
+        btn.disabled = true;
+        const { error } = await sb.rpc('update_order', {
+          p_order: o.id, p_customer_name: f.name, p_phone: f.phone, p_address: f.address,
+          p_note: f.note || null, p_items: items,
+        });
+        btn.disabled = false;
+        if (error) return toast(error.message, true);
+        d.close();
+        toast(`Đã sửa đơn #${o.id}`);
+        loadOrders();
+      };
+      d.showModal();
     }
 
     // ---------- Tạo đơn hộ khách gọi điện / nhắn Zalo ----------

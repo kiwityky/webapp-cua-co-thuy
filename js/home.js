@@ -1,6 +1,6 @@
 // Trang chủ: sản phẩm + giỏ hàng, tab danh mục, menu mobile, thư viện ảnh + lightbox.
 // Mọi thao tác DOM đều kiểm tra phần tử tồn tại.
-import { esc, money, toast, loadProducts, initNav, applyShopLinks } from './common.js';
+import { esc, money, toast, loadProducts, initNav, applyShopLinks, initAccountNav } from './common.js';
 import * as cart from './cart.js';
 
 // images.js do Tác vụ 2 tạo; nếu thiếu, trang vẫn chạy (không ảnh)
@@ -220,6 +220,7 @@ function safe(fn) { try { fn(); } catch (err) { console.error(err); } }
 
 safe(applyShopLinks);
 safe(initNav);
+safe(initAccountNav);
 safe(() => cart.bindCount());
 safe(initTabs);
 safe(initGallery);

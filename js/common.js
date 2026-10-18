@@ -174,3 +174,55 @@ export function renderAuth(root, onDone) {
     onDone();
   };
 }
+
+// Menu theo vai trò, gắn vào nav#mainNav.
+// - login: true (trang chủ): thêm nút "Đăng nhập" mở hộp thoại; đã đăng nhập thì hiện
+//   "Đăng xuất". login: false (trang tài khoản, đã có form và nút đăng xuất riêng).
+// - Nhân viên/admin luôn thấy thêm nút "Quản lý đơn". Chỉ để điều hướng; quyền thật do RLS.
+export async function initAccountNav({ login = true } = {}) {
+  const nav = $('#mainNav');
+  if (!nav || !sb || $('#acctNav')) return;
+  const slot = document.createElement('span');
+  slot.id = 'acctNav';
+  slot.className = 'acct-nav';
+  nav.append(slot);
+
+  const render = (me) => {
+    const staff = me && ['staff', 'admin'].includes(me.role);
+    slot.innerHTML =
+      (staff ? '<a href="quan-ly.html" class="staff-link">Quản lý đơn</a>' : '') +
+      (login ? (me
+        ? `<a href="#" data-acct="logout">Đăng xuất${me.full_name ? ' (' + esc(me.full_name) + ')' : ''}</a>`
+        : '<a href="#" data-acct="login">Đăng nhập</a>') : '');
+  };
+  const refresh = async () => {
+    let me = null;
+    try { me = await currentProfile(); } catch (err) { console.error(err); }
+    render(me);
+  };
+
+  slot.addEventListener('click', async (e) => {
+    const a = e.target.closest('[data-acct]');
+    if (!a) return;
+    e.preventDefault();
+    if (a.dataset.acct === 'login') return openLoginDialog(refresh);
+    try { await sb.auth.signOut(); } catch { /* bỏ qua */ }
+    render(null);
+  });
+  await refresh();
+}
+
+function openLoginDialog(onDone) {
+  let d = $('#loginDialog');
+  if (!d) {
+    d = document.createElement('dialog');
+    d.id = 'loginDialog';
+    d.className = 'login-dialog';
+    d.innerHTML = '<button type="button" class="dlg-close" aria-label="Đóng">×</button><div class="dlg-body"></div>';
+    document.body.append(d);
+    $('.dlg-close', d).onclick = () => d.close();
+    d.addEventListener('click', (e) => { if (e.target === d) d.close(); });
+  }
+  renderAuth($('.dlg-body', d), () => { d.close(); onDone(); });
+  d.showModal();
+}

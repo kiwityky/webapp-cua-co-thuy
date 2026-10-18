@@ -76,12 +76,13 @@
   </main>
 
   <script type="module">
-    import { sb, configured, SHOP, esc, money, when, toast, $, STATUS, currentProfile, loadProducts, renderAuth, initNav, applyShopLinks } from './js/common.js';
+    import { sb, configured, SHOP, esc, money, when, toast, $, STATUS, currentProfile, loadProducts, renderAuth, initNav, applyShopLinks, initAccountNav } from './js/common.js';
     import { renderOrderForm } from './js/order-form.js';
     import * as cart from './js/cart.js';
 
     initNav();
     applyShopLinks();
+    initAccountNav({ login: false });
     cart.bindCount();
 
     const show = (el, on = true) => el && el.classList.toggle('hidden', !on);
