@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tài khoản – Cua Cô Thúy</title>
+  <meta name="robots" content="noindex">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="topbar">
+      <div class="wrap">
+        <span class="topbar-place">Cua Năm Căn · Đầm Dơi · Cà Mau</span>
+        <span class="topbar-contact">
+          <a href="tel:0921874280" id="topPhone">Hotline 0921 874 280</a>
+          <a href="https://zalo.me/0921874280" id="topZalo" target="_blank" rel="noopener">Zalo</a>
+        </span>
+      </div>
+    </div>
+    <div class="nav-row">
+      <div class="wrap">
+        <a class="logo" href="./">
+          <img src="assets/logo.svg" alt="" width="40" height="40">
+          <span>Cua Cô Thúy</span>
+        </a>
+        <button class="nav-toggle" type="button" aria-controls="mainNav" aria-expanded="false" aria-label="Mở menu">
+          <span class="bar"></span><span class="bar"></span><span class="bar"></span>
+        </button>
+        <nav id="mainNav" class="main-nav" aria-label="Menu chính">
+          <a href="./">Trang chủ</a>
+          <a href="./#san-pham">Cua sống</a>
+          <a href="#" id="logout" class="hidden">Đăng xuất</a>
+        </nav>
+        <a class="cart-btn" href="#dat-hang" aria-label="Giỏ hàng">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M3 4h2l2.2 10.2a2 2 0 0 0 2 1.6h7.6a2 2 0 0 0 2-1.5L20.5 8H6.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="10" cy="19.5" r="1.4" fill="currentColor"/><circle cx="17" cy="19.5" r="1.4" fill="currentColor"/></svg>
+          <span class="cart-label">Giỏ hàng</span>
+          <span id="cartCount" class="cart-count">0</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div id="cartPreview"></div>
+    <div id="auth"></div>
+    <div id="app" class="hidden">
+      <section>
+        <div class="grid">
+          <div class="card">
+            <div class="muted">Xin chào</div>
+            <h2 id="hello"></h2>
+            <div class="muted">Điểm tích lũy</div>
+            <div class="points" id="points">0</div>
+            <div class="muted" id="rateNote"></div>
+          </div>
+          <form class="card" id="profileForm">
+            <h3>Thông tin giao hàng</h3>
+            <label>Họ tên<input name="full_name" autocomplete="name"></label>
+            <label>Số điện thoại<input name="phone" inputmode="tel" autocomplete="tel"></label>
+            <label>Địa chỉ<textarea name="address" autocomplete="street-address"></textarea></label>
+            <button class="btn btn-blue">Lưu</button>
+          </form>
+        </div>
+      </section>
+    </div>
+    <section id="dat-hang" class="hidden">
+      <div id="orderBox"></div>
+    </section>
+    <section id="myOrdersBox" class="hidden">
+      <h2>Đơn của tôi</h2>
+      <div id="myOrders"></div>
+    </section>
+  </main>
+
+  <script type="module">
+    import { sb, configured, SHOP, esc, money, when, toast, $, STATUS, currentProfile, loadProducts, renderAuth, initNav, applyShopLinks } from './js/common.js';
+    import { renderOrderForm } from './js/order-form.js';
+    import * as cart from './js/cart.js';
+
+    initNav();
+    applyShopLinks();
+    cart.bindCount();
+
+    const show = (el, on = true) => el && el.classList.toggle('hidden', !on);
+    const goOrder = () => { if (location.hash === '#dat-hang') $('#dat-hang')?.scrollIntoView({ block: 'start' }); };
+
+    $('#logout')?.addEventListener('click', async (e) => {
+      e.preventDefault();
+      try { await sb?.auth.signOut(); } catch { /* bỏ qua */ }
+      location.reload();
+    });
+
+    // Nội dung giỏ dạng chữ (để dán vào Zalo)
+    const cartText = (items) => 'Đặt cua Cô Thúy:\n' + items.map((i) =>
+      `- ${i.name}: ${i.quantity} ${i.unit} × ${money(i.price)}`).join('\n') +
+      `\nTạm tính: ${money(cart.total())}`;
+
+    // Bảng tóm tắt giỏ hàng (sửa số kg / xoá dòng)
+    function cartSummary(items) {
+      if (!items.length) return `<p class="muted">Giỏ hàng đang trống. <a href="./#san-pham">Chọn cua</a></p>`;
+      return `
+        <div class="table-wrap"><table>
+          <thead><tr><th>Loại cua</th><th>Số ${esc(items[0].unit)}</th><th>Thành tiền</th><th></th></tr></thead>
+          <tbody>${items.map((i) => `
+            <tr>
+              <td>${esc(i.name)}<br><span class="muted">${esc(money(i.price))}/${esc(i.unit)}</span></td>
+              <td><input type="number" min="0.5" step="0.5" max="100" value="${esc(i.quantity)}" data-qty="${esc(i.product_id)}" aria-label="Số ${esc(i.unit)} ${esc(i.name)}" style="max-width:90px"></td>
+              <td>${esc(money(Math.round(i.price * i.quantity)))}</td>
+              <td><button type="button" class="btn small" data-remove="${esc(i.product_id)}" aria-label="Xóa ${esc(i.name)}">×</button></td>
+            </tr>`).join('')}
+          </tbody>
+        </table></div>
+        <div class="row" style="justify-content:space-between;margin-top:10px">
+          <b>Tạm tính: ${esc(money(cart.total()))}</b>
+          <span class="muted">Giá cuối theo cân thực tế khi giao.</span>
+        </div>`;
+    }
+
+    function bindSummary(root, rerender) {
+      root.querySelectorAll('[data-qty]').forEach((inp) => inp.addEventListener('change', () => {
+        cart.setQty(inp.dataset.qty, parseFloat(inp.value) || 0); rerender();
+      }));
+      root.querySelectorAll('[data-remove]').forEach((b) => b.addEventListener('click', () => {
+        cart.remove(b.dataset.remove); rerender();
+      }));
+    }
+
+    // Chưa cấu hình Supabase: thông báo thân thiện + tóm tắt giỏ + nút Zalo
+    function renderNotConfigured() {
+      const box = $('#orderBox');
+      if (!box) return;
+      const paint = () => {
+        const items = cart.get();
+        box.innerHTML = `
+          <div class="card">
+            <h2>Đặt hàng</h2>
+            <p>Hệ thống đặt hàng online đang được cài đặt, vui lòng nhắn Zalo
+              <b>${esc(SHOP.phoneDisplay)}</b> để đặt cua.</p>
+            <h3>Giỏ hàng của bạn</h3>
+            ${cartSummary(items)}
+            <div class="row" style="margin-top:14px">
+              <a class="btn btn-red" href="${esc(SHOP.zalo)}" target="_blank" rel="noopener">NHẮN ZALO ĐẶT HÀNG</a>
+              <a class="btn btn-blue" href="tel:${esc(SHOP.phone)}">Gọi ${esc(SHOP.phoneDisplay)}</a>
+              ${items.length ? '<button type="button" class="btn small" id="copyCart">Sao chép nội dung đơn</button>' : ''}
+            </div>
+          </div>`;
+        bindSummary(box, paint);
+        $('#copyCart', box)?.addEventListener('click', async () => {
+          try { await navigator.clipboard.writeText(cartText(cart.get())); toast('Đã sao chép – dán vào Zalo để gửi cho shop'); }
+          catch { toast('Không sao chép được, vui lòng nhắn Zalo tên loại cua và số kg', true); }
+        });
+      };
+      paint();
+      show($('#dat-hang'));
+      goOrder();
+    }
+
+    // Đã cấu hình nhưng chưa đăng nhập: nhắc giỏ hàng phía trên form đăng nhập
+    function renderCartPreview() {
+      const box = $('#cartPreview');
+      if (!box) return;
+      const paint = () => {
+        const items = cart.get();
+        box.innerHTML = items.length ? `
+          <div class="card narrow">
+            <h3>Giỏ hàng (${items.length} loại)</h3>
+            ${cartSummary(items)}
+            <p class="muted" style="margin-top:8px">Đăng nhập hoặc đăng ký để gửi đơn và tích điểm,
+              hoặc <a href="${esc(SHOP.zalo)}" target="_blank" rel="noopener">nhắn Zalo ${esc(SHOP.phoneDisplay)}</a>.</p>
+          </div>` : '';
+        bindSummary(box, paint);
+      };
+      paint();
+    }
+
+    async function start() {
+      if (!configured || !sb) return renderNotConfigured();
+      let me = null;
+      try { me = await currentProfile(); } catch (err) { console.error(err); }
+      if (!me) { renderCartPreview(); return renderAuth($('#auth'), start); }
+      $('#auth').innerHTML = '';
+      $('#cartPreview').innerHTML = '';
+      show($('#app')); show($('#dat-hang')); show($('#myOrdersBox')); show($('#logout'));
+      $('#hello').textContent = me.full_name || me.email;
+      $('#points').textContent = me.points ?? 0;
+      const { data: rate } = await sb.from('settings').select('value').eq('key', 'vnd_per_point').maybeSingle();
+      $('#rateNote').textContent = `Mỗi ${money(rate?.value || 10000)} trên đơn đã giao = 1 điểm`;
+
+      const pf = $('#profileForm');
+      for (const k of ['full_name', 'phone', 'address']) pf[k].value = me[k] || '';
+      pf.onsubmit = async (e) => {
+        e.preventDefault();
+        const f = Object.fromEntries(new FormData(pf));
+        const { error } = await sb.from('profiles').update(f).eq('id', me.id);
+        if (error) return toast(error.message, true);
+        Object.assign(me, f);
+        toast('Đã lưu');
+      };
+
+      const products = await loadProducts();
+      const renderForm = () => renderOrderForm($('#orderBox'), products,
+        { ...me, items: cart.get() },
+        () => { cart.clear(); renderForm(); loadOrders(); $('#myOrdersBox')?.scrollIntoView({ behavior: 'smooth' }); });
+      renderForm();
+      loadOrders();
+      goOrder();
+    }
+
+    async function loadOrders() {
+      const { data, error } = await sb.from('orders')
+        .select('*, order_items(*)').order('created_at', { ascending: false });
+      if (error) return toast(error.message, true);
+      $('#myOrders').innerHTML = data.length ? data.map((o) => `
+        <div class="card order-card">
+          <div class="head">
+            <b>Đơn #${esc(o.id)} · ${esc(when(o.created_at))}</b>
+            <span class="st ${esc(o.status)}">${esc(STATUS[o.status] || o.status)}</span>
+          </div>
+          <div>${o.order_items.map((i) => `${esc(i.product_name)} × ${esc(i.quantity)} ${esc(i.unit)}`).join(', ')}</div>
+          <div class="muted">${esc(o.address)}${o.note ? ' · ' + esc(o.note) : ''}</div>
+          <div class="row" style="justify-content:space-between">
+            <b>${esc(money(o.total))}</b>
+            ${o.points_awarded ? `<span>+${esc(o.points_awarded)} điểm</span>` : ''}
+            ${o.status === 'moi' ? `<button class="btn small" data-cancel="${esc(o.id)}">Hủy đơn</button>` : ''}
+          </div>
+        </div>`).join('') : '<p class="muted">Chưa có đơn nào.</p>';
+      $('#myOrders').querySelectorAll('[data-cancel]').forEach((b) => b.onclick = async () => {
+        if (!confirm('Hủy đơn này?')) return;
+        const { error } = await sb.rpc('cancel_my_order', { p_order: Number(b.dataset.cancel) });
+        error ? toast(error.message, true) : loadOrders();
+      });
+    }
+
+    window.addEventListener('hashchange', goOrder);
+    start();
+  </script>
+</body>
+</html>

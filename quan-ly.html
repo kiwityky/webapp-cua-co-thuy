@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Quản lý đơn – Cua Cô Thúy</title>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="nav-row"><div class="wrap">
+    <a class="logo" href="./"><img src="assets/logo.svg" alt="" width="40" height="40"><span>Cua Cô Thúy · Nội bộ</span></a>
+    <nav id="nav" class="main-nav staff-nav hidden" aria-label="Menu nội bộ">
+      <a href="#" data-tab="orders">Đơn hàng</a>
+      <a href="#" data-tab="new">Tạo đơn hộ</a>
+      <a href="#" data-tab="products">Sản phẩm</a>
+      <a href="#" data-tab="admin" class="admin-only hidden">Nhân viên</a>
+      <a href="#" id="logout">Đăng xuất</a>
+    </nav>
+  </div></div>
+  </header>
+
+  <main class="wrap">
+    <div id="auth"></div>
+    <p id="denied" class="card narrow hidden">Tài khoản này chưa được cấp quyền nhân viên. Nhờ admin cấp quyền rồi tải lại trang.</p>
+
+    <section id="tab-orders" class="tab hidden">
+      <div class="stats" id="stats"></div>
+      <div class="row" style="margin-bottom:12px">
+        <select id="fStatus" style="max-width:200px"><option value="">Tất cả trạng thái</option></select>
+        <input id="fSearch" placeholder="Tìm tên, SĐT, địa chỉ, mã đơn" style="max-width:320px">
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Đơn</th><th>Khách hàng</th><th>Hàng</th><th>Ghi chú</th><th>Trạng thái</th></tr></thead>
+        <tbody id="orderRows"></tbody>
+      </table></div>
+    </section>
+
+    <section id="tab-new" class="tab hidden"></section>
+
+    <section id="tab-products" class="tab hidden">
+      <h2>Sản phẩm &amp; giá</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Tên</th><th>Mô tả</th><th>Giá (đ)</th><th>Nhãn</th><th>Thứ tự</th><th>Đang bán</th><th></th></tr></thead>
+        <tbody id="productRows"></tbody>
+      </table></div>
+      <button class="btn small" id="addProduct" style="margin-top:10px">+ Thêm sản phẩm</button>
+    </section>
+
+    <section id="tab-admin" class="tab hidden">
+      <div class="grid">
+        <form class="card" id="roleForm">
+          <h3>Cấp quyền</h3>
+          <p class="muted">Người đó tự đăng ký tài khoản trước, sau đó nhập email ở đây.</p>
+          <label>Email<input name="email" type="email" required></label>
+          <label>Vai trò<select name="role"><option value="staff">Nhân viên</option><option value="admin">Admin</option><option value="customer">Khách (thu hồi quyền)</option></select></label>
+          <button class="btn primary">Cập nhật</button>
+        </form>
+        <form class="card" id="rateForm">
+          <h3>Tích điểm</h3>
+          <label>Số tiền (đ) cho 1 điểm<input name="rate" type="number" min="1000" step="1000"></label>
+          <button class="btn primary">Lưu</button>
+        </form>
+      </div>
+      <h3 style="margin-top:20px">Nhân viên hiện có</h3>
+      <div id="staffList"></div>
+    </section>
+  </main>
+
+  <script type="module">
+    import { sb, esc, money, when, toast, $, STATUS, currentProfile, loadProducts, renderAuth } from './js/common.js';
+    import { renderOrderForm } from './js/order-form.js';
+
+    let me, orders = [];
+
+    $('#logout').onclick = async (e) => { e.preventDefault(); await sb.auth.signOut(); location.reload(); };
+    document.querySelectorAll('[data-tab]').forEach((a) => a.onclick = (e) => { e.preventDefault(); show(a.dataset.tab); });
+    function show(tab) {
+      document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('hidden', t.id !== 'tab-' + tab));
+      ({ orders: loadOrders, new: renderNew, products: loadProductRows, admin: loadAdmin })[tab]?.();
+    }
+
+    async function start() {
+      me = await currentProfile();
+      if (!me) return renderAuth($('#auth'), start);
+      $('#auth').innerHTML = '';
+      if (!['staff', 'admin'].includes(me.role)) {
+        $('#denied').classList.remove('hidden');
+        $('#nav').classList.remove('hidden');
+        document.querySelectorAll('[data-tab]').forEach((a) => a.classList.add('hidden'));
+        return;
+      }
+      $('#nav').classList.remove('hidden');
+      if (me.role === 'admin') document.querySelectorAll('.admin-only').forEach((x) => x.classList.remove('hidden'));
+      $('#fStatus').innerHTML += Object.entries(STATUS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
+      $('#fStatus').onchange = renderOrders;
+      $('#fSearch').oninput = renderOrders;
+
+      // Realtime: đơn mới hoặc thay đổi từ thành viên khác hiện ngay
+      sb.channel('orders').on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (p) => {
+        if (p.eventType === 'INSERT') toast(`Có đơn mới #${p.new.id}`);
+        loadOrders();
+      }).subscribe();
+
+      show('orders');
+    }
+
+    // ---------- Đơn hàng ----------
+    async function loadOrders() {
+      const { data, error } = await sb.from('orders')
+        .select('*, order_items(*), creator:profiles!orders_created_by_fkey(full_name), editor:profiles!orders_updated_by_fkey(full_name)')
+        .order('created_at', { ascending: false }).limit(500);
+      if (error) return toast(error.message, true);
+      orders = data;
+      renderOrders();
+    }
+
+    function renderOrders() {
+      const today = new Date().toDateString();
+      const cnt = (s) => orders.filter((o) => o.status === s).length;
+      const revenue = orders.filter((o) => o.status === 'da_giao' && new Date(o.updated_at).toDateString() === today)
+        .reduce((s, o) => s + o.total, 0);
+      $('#stats').innerHTML = [
+        ['Mới', cnt('moi')], ['Đã xác nhận', cnt('xac_nhan')], ['Đang giao', cnt('dang_giao')], ['Doanh thu hôm nay', money(revenue)],
+      ].map(([k, v]) => `<div class="card"><span class="muted">${k}</span><b>${v}</b></div>`).join('');
+
+      const st = $('#fStatus').value, q = $('#fSearch').value.trim().toLowerCase();
+      const rows = orders.filter((o) => (!st || o.status === st) &&
+        (!q || [o.id, o.customer_name, o.phone, o.address].join(' ').toLowerCase().includes(q)));
+      $('#orderRows').innerHTML = rows.map((o) => `
+        <tr>
+          <td><b>#${o.id}</b><br><span class="muted">${when(o.created_at)}</span><br>
+              <span class="muted">${o.created_by === o.customer_id ? 'Khách tự đặt' : 'Tạo bởi ' + esc(o.creator?.full_name || 'nhân viên')}</span></td>
+          <td><b>${esc(o.customer_name)}</b><br><a href="tel:${esc(o.phone)}">${esc(o.phone)}</a><br>${esc(o.address)}
+              ${o.customer_id ? '<br><span class="badge">Thành viên</span>' : ''}</td>
+          <td>${o.order_items.map((i) => `${esc(i.product_name)} × ${i.quantity} ${esc(i.unit)}`).join('<br>')}<br><b>${money(o.total)}</b></td>
+          <td>${o.note ? `<div>Khách: ${esc(o.note)}</div>` : ''}
+              <textarea data-note="${o.id}" placeholder="Ghi chú nội bộ">${esc(o.staff_note)}</textarea></td>
+          <td><select data-status="${o.id}">${Object.entries(STATUS).map(([k, v]) =>
+                `<option value="${k}" ${k === o.status ? 'selected' : ''}>${v}</option>`).join('')}</select>
+              ${o.editor ? `<div class="muted">Sửa bởi ${esc(o.editor.full_name || '')}<br>${when(o.updated_at)}</div>` : ''}</td>
+        </tr>`).join('') || '<tr><td colspan="5" class="muted">Không có đơn.</td></tr>';
+
+      $('#orderRows').querySelectorAll('[data-status]').forEach((s) => s.onchange = () =>
+        updateOrder(s.dataset.status, { status: s.value }));
+      $('#orderRows').querySelectorAll('[data-note]').forEach((t) => t.onchange = () =>
+        updateOrder(t.dataset.note, { staff_note: t.value }));
+    }
+
+    async function updateOrder(id, patch) {
+      const { error } = await sb.from('orders').update(patch).eq('id', id);
+      error ? toast(error.message, true) : toast(`Đã cập nhật đơn #${id}`);
+    }
+
+    // ---------- Tạo đơn hộ khách gọi điện / nhắn Zalo ----------
+    async function renderNew() {
+      renderOrderForm($('#tab-new'), await loadProducts(),
+        { title: 'Tạo đơn hộ khách (Zalo / điện thoại)' }, () => show('orders'));
+    }
+
+    // ---------- Sản phẩm ----------
+    async function loadProductRows() {
+      const { data, error } = await sb.from('products').select('*').order('sort');
+      if (error) return toast(error.message, true);
+      $('#productRows').innerHTML = data.map(productRow).join('');
+      bindProductRows();
+    }
+    const productRow = (p) => `
+      <tr data-id="${p.id ?? ''}">
+        <td><input name="name" value="${esc(p.name)}"></td>
+        <td><input name="description" value="${esc(p.description)}"></td>
+        <td><input name="price" type="number" min="0" step="1000" value="${p.price ?? 0}"></td>
+        <td><input name="badge" value="${esc(p.badge)}"></td>
+        <td><input name="sort" type="number" value="${p.sort ?? 0}" style="width:70px"></td>
+        <td><input name="active" type="checkbox" ${p.active !== false ? 'checked' : ''} style="width:auto"></td>
+        <td><button class="btn small">Lưu</button></td>
+      </tr>`;
+    function bindProductRows() {
+      $('#productRows').querySelectorAll('tr').forEach((tr) => $('button', tr).onclick = async () => {
+        const v = (n) => $(`[name=${n}]`, tr);
+        const row = { name: v('name').value.trim(), description: v('description').value, price: Number(v('price').value),
+          badge: v('badge').value || null, sort: Number(v('sort').value), active: v('active').checked };
+        if (!row.name) return toast('Thiếu tên', true);
+        const q = tr.dataset.id ? sb.from('products').update(row).eq('id', tr.dataset.id) : sb.from('products').insert(row);
+        const { error } = await q;
+        error ? toast(error.message, true) : (toast('Đã lưu'), loadProductRows());
+      });
+    }
+    $('#addProduct').onclick = () => {
+      $('#productRows').insertAdjacentHTML('beforeend', productRow({ unit: 'kg' }));
+      bindProductRows();
+    };
+
+    // ---------- Admin ----------
+    async function loadAdmin() {
+      const { data: rate } = await sb.from('settings').select('value').eq('key', 'vnd_per_point').maybeSingle();
+      $('#rateForm').rate.value = rate?.value || 10000;
+      const { data, error } = await sb.rpc('list_staff');
+      if (error) return toast(error.message, true);
+      $('#staffList').innerHTML = data.map((s) =>
+        `<div>${esc(s.full_name || '')} · ${esc(s.email)} · <b>${s.role === 'admin' ? 'Admin' : 'Nhân viên'}</b></div>`).join('');
+    }
+    $('#roleForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const f = Object.fromEntries(new FormData(e.target));
+      const { error } = await sb.rpc('set_role', { p_email: f.email, p_role: f.role });
+      error ? toast(error.message, true) : (toast('Đã cập nhật'), loadAdmin());
+    };
+    $('#rateForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const { error } = await sb.from('settings').upsert({ key: 'vnd_per_point', value: String(e.target.rate.value) });
+      error ? toast(error.message, true) : toast('Đã lưu');
+    };
+
+    start();
+  </script>
+</body>
+</html>

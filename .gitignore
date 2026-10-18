@@ -1,0 +1,28 @@
+# Công cụ kiểm thử
+tools/test/node_modules/
+
+# Không bao giờ đưa lên repo public
+.env
+.env.*
+*.key
+*.pem
+*.xlsx
+*.xls
+*.csv
+*.sqlite
+*.db
+*.bak
+
+# Ảnh gốc, ảnh chụp màn hình, tài liệu nội bộ (nếu lỡ chép vào webapp/)
+images/
+uploads/
+webapp-test/
+bang-gia/
+Screenshot*
+*.psd
+
+# Hệ điều hành / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/

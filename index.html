@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cua Cô Thúy – Cua Năm Căn, Đầm Dơi, Cà Mau</title>
+  <meta name="description" content="Cua Năm Căn, Đầm Dơi (Cà Mau) tươi ngon. Cua dây rút, cân đủ ký, bao đổi trả. Đặt hàng qua Zalo 0921 874 280.">
+  <meta name="theme-color" content="#0b2e4f">
+  <meta property="og:title" content="Cua Cô Thúy – Cua Năm Căn, Đầm Dơi, Cà Mau">
+  <meta property="og:description" content="Cua sống Năm Căn, Đầm Dơi, Cà Mau. Cân đủ ký, bao đổi trả. Đặt qua Zalo 0921 874 280.">
+  <meta property="og:image" content="assets/img/og.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap" rel="stylesheet">
+  <link rel="preload" as="image" type="image/webp" imagesrcset="assets/img/cua-song-day-rut-480.webp 360w, assets/img/cua-song-day-rut-960.webp 720w, assets/img/cua-song-day-rut-1600.webp 900w" imagesizes="(max-width:960px) 100vw, 48vw">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="home">
+  <a class="skip-link" href="#san-pham">Bỏ qua, tới sản phẩm</a>
+
+  <header class="site-header">
+    <div class="topbar">
+      <div class="wrap">
+        <span class="topbar-place">Cua Năm Căn · Đầm Dơi · Cà Mau</span>
+        <span class="topbar-contact">
+          <a href="tel:0921874280" id="topPhone">Hotline 0921 874 280</a>
+          <a href="https://zalo.me/0921874280" id="topZalo" target="_blank" rel="noopener">Zalo</a>
+        </span>
+      </div>
+    </div>
+    <div class="nav-row">
+      <div class="wrap">
+        <a class="logo" href="./">
+          <img src="assets/logo.svg" alt="" width="40" height="40">
+          <span>Cua Cô Thúy</span>
+        </a>
+        <button class="nav-toggle" type="button" aria-controls="mainNav" aria-expanded="false" aria-label="Mở menu">
+          <span class="bar"></span><span class="bar"></span><span class="bar"></span>
+        </button>
+        <nav id="mainNav" class="main-nav" aria-label="Menu chính">
+          <a href="./" aria-current="page">Trang chủ</a>
+          <a href="#san-pham" data-cat="song">Cua sống</a>
+          <a href="#san-pham" data-cat="che-bien">Món chế biến <span class="tag-dev">Đang phát triển</span></a>
+          <a href="#cam-ket">Cam kết</a>
+          <a href="#hinh-anh">Hình ảnh</a>
+          <a href="tai-khoan.html">Tài khoản · Tích điểm</a>
+        </nav>
+        <a class="cart-btn" href="tai-khoan.html#dat-hang" aria-label="Giỏ hàng">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M3 4h2l2.2 10.2a2 2 0 0 0 2 1.6h7.6a2 2 0 0 0 2-1.5L20.5 8H6.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="10" cy="19.5" r="1.4" fill="currentColor"/><circle cx="17" cy="19.5" r="1.4" fill="currentColor"/></svg>
+          <span class="cart-label">Giỏ hàng</span>
+          <span id="cartCount" class="cart-count">0</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section id="hero" class="hero">
+      <picture class="hero-bg">
+        <source type="image/webp" srcset="assets/img/cua-song-day-rut-480.webp 360w, assets/img/cua-song-day-rut-960.webp 720w, assets/img/cua-song-day-rut-1600.webp 900w" sizes="(max-width:960px) 100vw, 48vw">
+        <img src="assets/img/cua-song-day-rut-960.jpg" alt="Cua sống Năm Căn buộc dây, chắc thịt" width="720" height="1280" fetchpriority="high" decoding="async">
+      </picture>
+      <div class="wrap hero-inner">
+        <p class="eyebrow">Đặc sản Năm Căn · Đầm Dơi · Cà Mau</p>
+        <h1>Cua Cô Thúy</h1>
+        <p class="hero-lead">Cua sống bắt từ vùng rừng ngập mặn Cà Mau, chọn từng con chắc thịt, đầy gạch. Cua dây rút, cân đủ ký, giao tận nơi.</p>
+        <div class="hero-cta">
+          <a class="btn btn-red" href="#san-pham">ĐẶT CUA NGAY</a>
+          <a class="btn btn-ghost" id="zaloBtn" href="https://zalo.me/0921874280" target="_blank" rel="noopener">NHẮN ZALO</a>
+        </div>
+      </div>
+    </section>
+
+    <section id="cam-ket" class="perks-strip" aria-label="Cam kết của Cua Cô Thúy">
+      <div class="wrap perks">
+        <div class="perk">
+          <span class="perk-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M12 3v3M5 8h14M7 8l-3 7a3 3 0 0 0 6 0L7 8zM17 8l-3 7a3 3 0 0 0 6 0l-3-7zM12 6v14M8 20h8"/></svg>
+          </span>
+          <div><b>Cua dây rút</b><span>Cân đủ ký</span></div>
+        </div>
+        <div class="perk">
+          <span class="perk-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M3 6h11v10H3zM14 9h4l3 3v4h-7"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/></svg>
+          </span>
+          <div><b>Freeship đơn đầu</b><span>Sau đó tính theo giá GreenSM</span></div>
+        </div>
+        <div class="perk">
+          <span class="perk-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 14-5.3L20 9M20 4v5h-5M20 12a8 8 0 0 1-14 5.3L4 15M4 20v-5h5"/></svg>
+          </span>
+          <div><b>Bao đổi trả</b><span>Cua chết, rụng càng</span></div>
+        </div>
+        <div class="perk">
+          <span class="perk-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M12 3l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 16.4 6.8 19.2l1-5.9-4.3-4.1 5.9-.8z"/></svg>
+          </span>
+          <div><b>Tích điểm thành viên</b><span id="pointRate">Đổi điểm nhận ưu đãi</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="san-pham" class="section">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="kicker">Sản phẩm</p>
+          <h2>Chọn cua theo nhu cầu</h2>
+          <p class="muted">Hiện Cua Cô Thúy chỉ bán cua sống. Món chế biến sẵn đang được chuẩn bị.</p>
+        </div>
+
+        <div class="cat-tabs" role="tablist" aria-label="Danh mục sản phẩm">
+          <button class="cat-tab active" type="button" role="tab" id="tab-song" data-cat="song" aria-selected="true" aria-controls="panel-song">Cua sống</button>
+          <button class="cat-tab" type="button" role="tab" id="tab-che-bien" data-cat="che-bien" aria-selected="false" aria-controls="panel-che-bien" tabindex="-1">Món chế biến <span class="tag-dev">Đang phát triển</span></button>
+        </div>
+
+        <div id="panel-song" class="cat-panel" role="tabpanel" aria-labelledby="tab-song">
+          <div id="products" class="product-grid" aria-live="polite">
+            <article class="product-card skeleton" aria-hidden="true"><div class="product-media"></div><div class="product-body"><h3>&nbsp;</h3><p class="desc">&nbsp;</p><div class="price-row"><span class="price">&nbsp;</span></div></div></article>
+            <article class="product-card skeleton" aria-hidden="true"><div class="product-media"></div><div class="product-body"><h3>&nbsp;</h3><p class="desc">&nbsp;</p><div class="price-row"><span class="price">&nbsp;</span></div></div></article>
+            <article class="product-card skeleton" aria-hidden="true"><div class="product-media"></div><div class="product-body"><h3>&nbsp;</h3><p class="desc">&nbsp;</p><div class="price-row"><span class="price">&nbsp;</span></div></div></article>
+          </div>
+          <p id="priceNote" class="muted price-note">Giá có thể thay đổi theo mùa. Nhắn Zalo để được báo giá hôm nay.</p>
+        </div>
+
+        <div id="panel-che-bien" class="cat-panel" role="tabpanel" aria-labelledby="tab-che-bien" hidden>
+          <div class="coming-soon">
+            <span class="cs-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M4 13h16a8 8 0 0 1-16 0zM2 13h20M9 4c-1 1.5 1 2.5 0 4M13 4c-1 1.5 1 2.5 0 4M17 4c-1 1.5 1 2.5 0 4"/></svg>
+            </span>
+            <span class="tag-dev">Đang phát triển</span>
+            <h3>Món chế biến sắp ra mắt</h3>
+            <p class="muted">Các món cua chế biến sẵn đang được Cô Thúy chuẩn bị. Nhắn Zalo để được báo khi có món mới.</p>
+            <a class="btn btn-blue" id="zaloNotify" href="https://zalo.me/0921874280" target="_blank" rel="noopener">ĐĂNG KÝ NHẬN TIN QUA ZALO</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="cach-dat" class="section section-sky">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="kicker">Đặt hàng</p>
+          <h2>Đặt cua chỉ 3 bước</h2>
+        </div>
+        <ol class="steps">
+          <li class="step">
+            <span class="step-num">1</span>
+            <h3>Chọn cua</h3>
+            <p>Chọn loại cua và số ký, bấm “Thêm vào giỏ”.</p>
+          </li>
+          <li class="step">
+            <span class="step-num">2</span>
+            <h3>Gửi đơn hoặc nhắn Zalo</h3>
+            <p>Gửi đơn trên trang Tài khoản, hoặc nhắn Zalo 0921 874 280 để chốt đơn nhanh.</p>
+          </li>
+          <li class="step">
+            <span class="step-num">3</span>
+            <h3>Nhận cua, kiểm tra</h3>
+            <p>Mở hàng kiểm tra khi nhận. Cua chết, rụng càng được đổi trả.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section id="hinh-anh" class="section">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="kicker">Hình ảnh</p>
+          <h2>Cua thật, ảnh thật</h2>
+          <p class="muted">Bấm vào ảnh để xem lớn.</p>
+        </div>
+        <div id="gallery" class="gallery"></div>
+      </div>
+    </section>
+
+    <section id="bang-gia-anh" class="section section-sky">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="kicker">Bảng giá</p>
+          <h2>Bảng giá tham khảo</h2>
+        </div>
+        <picture><source type="image/webp" srcset="assets/img/bang-gia-520.webp 520w, assets/img/bang-gia-1040.webp 1040w" sizes="(max-width:600px) 100vw, 520px"><img class="pricelist" src="assets/bang-gia.png" width="1080" height="1920" alt="Bảng giá Cua Cô Thúy" loading="lazy" decoding="async"></picture>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-grid">
+      <div class="footer-col footer-about">
+        <a class="logo footer-badge" href="./"><img src="assets/logo-full.svg" alt="Cua Cô Thúy – Năm Căn · Đầm Dơi · Cà Mau" width="140" height="140"></a>
+        <p>Cua sống Năm Căn · Đầm Dơi, Cà Mau. Chọn cua kỹ, cân đủ ký, giao tận nơi.</p>
+      </div>
+      <div class="footer-col">
+        <h3>Liên hệ</h3>
+        <ul>
+          <li>Điện thoại: <a href="tel:0921874280" id="phone">0921 874 280</a></li>
+          <li>Zalo: <a href="https://zalo.me/0921874280" id="footerZalo" target="_blank" rel="noopener">0921 874 280</a></li>
+          <li>Khu vực: Năm Căn · Đầm Dơi, Cà Mau</li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h3>Cam kết</h3>
+        <ul>
+          <li>Cua dây rút – cân đủ ký</li>
+          <li>Freeship đơn đầu – sau đó tính theo giá GreenSM</li>
+          <li>Bao đổi trả cua chết, rụng càng</li>
+          <li>Tích điểm thành viên</li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h3>Liên kết</h3>
+        <ul>
+          <li><a href="#san-pham">Sản phẩm</a></li>
+          <li><a href="tai-khoan.html">Tài khoản · Tích điểm</a></li>
+          <li><a href="quan-ly.html">Khu nhân viên</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <div class="wrap">© 2026 Cua Cô Thúy. Cua Năm Căn · Đầm Dơi · Cà Mau.</div>
+    </div>
+  </footer>
+
+  <div class="action-bar" role="navigation" aria-label="Liên hệ nhanh">
+    <a class="ab-call" href="tel:0921874280">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg>
+      <span>Gọi ngay</span>
+    </a>
+    <a class="ab-zalo" id="zaloFloat" href="https://zalo.me/0921874280" target="_blank" rel="noopener">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>
+      <span>Zalo</span>
+    </a>
+    <a class="ab-order" href="#san-pham">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2l2.2 10.2a2 2 0 0 0 2 1.6h7.6a2 2 0 0 0 2-1.5L20.5 8H6.2"/></svg>
+      <span>Đặt hàng</span>
+    </a>
+  </div>
+
+  <dialog id="lightbox" class="lightbox"><img alt=""><button class="lb-close" aria-label="Đóng">×</button></dialog>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="js/home.js"></script>
+</body>
+</html>
