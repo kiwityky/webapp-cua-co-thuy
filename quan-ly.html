@@ -35,7 +35,7 @@
         <input id="fSearch" placeholder="Tìm tên, SĐT, địa chỉ, mã đơn" style="max-width:320px">
       </div>
       <div class="table-wrap"><table>
-        <thead><tr><th>Đơn</th><th>Khách hàng</th><th>Hàng</th><th>Ghi chú</th><th>Trạng thái</th></tr></thead>
+        <thead><tr><th>Đơn</th><th>Khách hàng</th><th>Hàng</th><th>Ghi chú</th><th>Thanh toán</th><th>Trạng thái</th></tr></thead>
         <tbody id="orderRows"></tbody>
       </table></div>
     </section>
@@ -72,7 +72,7 @@
   </main>
 
   <script type="module">
-    import { sb, esc, money, when, toast, $, STATUS, currentProfile, loadProducts, renderAuth } from './js/common.js';
+    import { sb, esc, money, when, toast, $, STATUS, PAYMENT_METHOD, PAYMENT_STATUS, currentProfile, loadProducts, renderAuth } from './js/common.js';
     import { renderOrderForm } from './js/order-form.js';
 
     let me, orders = [];
@@ -140,19 +140,23 @@
               ${o.delivery_time ? `<br><b>Giao: ${esc(o.delivery_time)}</b>` : ''}
               ${o.customer_id ? '<br><span class="badge">Thành viên</span>' : ''}</td>
           <td>${o.order_items.map((i) => `${esc(i.product_name)} × ${i.quantity} ${esc(i.unit)}`).join('<br>')}<br><b>${money(o.total)}</b></td>
-          <td>${o.note ? `<div>Khách: ${esc(o.note)}</div>` : ''}
-              <textarea data-note="${o.id}" placeholder="Ghi chú nội bộ">${esc(o.staff_note)}</textarea></td>
+          <td>${o.note ? esc(o.note) : '<span class="muted">—</span>'}</td>
+          <td><div class="muted">${esc(PAYMENT_METHOD[o.payment_method] || '')}</div>
+              <button type="button" class="btn small" data-pay="${o.id}" data-to="${o.payment_status === 'da_thu' ? 'chua_thu' : 'da_thu'}"
+                title="Bấm để đổi">${o.payment_status === 'da_thu' ? '✔ Đã thu' : 'Chưa thu · đánh dấu đã thu'}</button></td>
           <td><select data-status="${o.id}">${Object.entries(STATUS).map(([k, v]) =>
                 `<option value="${k}" ${k === o.status ? 'selected' : ''}>${v}</option>`).join('')}</select>
               ${o.editor ? `<div class="muted">Sửa bởi ${esc(o.editor.full_name || '')}<br>${when(o.updated_at)}</div>` : ''}</td>
-        </tr>`).join('') || '<tr><td colspan="5" class="muted">Không có đơn.</td></tr>';
+        </tr>`).join('') || '<tr><td colspan="6" class="muted">Không có đơn.</td></tr>';
 
       $('#orderRows').querySelectorAll('[data-status]').forEach((s) => s.onchange = () =>
         updateOrder(s.dataset.status, { status: s.value }));
+      $('#orderRows').querySelectorAll('[data-pay]').forEach((b) => b.onclick = async () => {
+        const { error } = await sb.from('orders').update({ payment_status: b.dataset.to }).eq('id', b.dataset.pay);
+        error ? toast(error.message, true) : (toast(`Đã cập nhật thanh toán đơn #${b.dataset.pay}`), loadOrders());
+      });
       $('#orderRows').querySelectorAll('[data-edit]').forEach((b) => b.onclick = () =>
         editOrder(orders.find((o) => o.id == b.dataset.edit)));
-      $('#orderRows').querySelectorAll('[data-note]').forEach((t) => t.onchange = () =>
-        updateOrder(t.dataset.note, { staff_note: t.value }));
     }
 
     async function updateOrder(id, patch) {
@@ -183,7 +187,13 @@
           <label>Địa chỉ giao<textarea name="address" required maxlength="300">${esc(o.address)}</textarea></label>
           <div id="editLines"></div>
           <button type="button" class="btn small" id="editAddLine">+ Thêm loại cua</button>
-          <label style="margin-top:10px">Thời gian giao<input name="delivery_time" maxlength="100" value="${esc(o.delivery_time)}" placeholder="VD: 9h sáng 19/10"></label>
+          <label style="margin-top:10px">Thời gian giao<input name="delivery_time" maxlength="100" placeholder="VD: sáng mai 7h" value="${esc(o.delivery_time)}"></label>
+          <div class="row" style="margin-top:10px">
+            <label>Hình thức thanh toán<select name="payment_method">${Object.entries(PAYMENT_METHOD).map(([k, v]) =>
+              `<option value="${k}" ${k === o.payment_method ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+            <label>Trạng thái thu tiền<select name="payment_status">${Object.entries(PAYMENT_STATUS).map(([k, v]) =>
+              `<option value="${k}" ${k === o.payment_status ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+          </div>
           <label>Ghi chú của khách<textarea name="note" maxlength="500">${esc(o.note)}</textarea></label>
           ${o.status === 'da_giao' && o.customer_id ? '<p class="muted">Đơn đã giao: điểm của khách sẽ tự điều chỉnh theo tổng tiền mới.</p>' : ''}
           <div class="row" style="justify-content:space-between">
@@ -234,6 +244,7 @@
         const { error } = await sb.rpc('update_order', {
           p_order: o.id, p_customer_name: f.name, p_phone: f.phone, p_address: f.address,
           p_note: f.note || null, p_items: items, p_delivery_time: f.delivery_time || null,
+          p_payment_method: f.payment_method, p_payment_status: f.payment_status,
         });
         btn.disabled = false;
         if (error) return toast(error.message, true);

@@ -355,3 +355,8 @@ th{color:var(--muted);font-weight:600;background:var(--sky)}
 .login-dialog .dlg-close{position:absolute;top:6px;right:6px;width:40px;height:40px;border:0;border-radius:50%;background:var(--sky);color:var(--navy);font-size:1.5rem;line-height:1;cursor:pointer}
 .edit-dialog{width:min(640px,calc(100vw - 32px))}
 .edit-dialog .item-line{margin-bottom:8px}
+.pay-dialog{width:min(420px,calc(100vw - 32px))}
+.pay-opt{display:flex;gap:12px;align-items:flex-start;padding:12px;border:1px solid #cfe0ee;border-radius:12px;margin:8px 0;cursor:pointer}
+.pay-opt input{width:auto;margin-top:4px}
+.pay-opt:has(input:checked){border-color:var(--blue);background:var(--sky)}
+.pay-bank{padding:10px 12px;background:var(--sky);border-radius:12px;margin-top:4px}

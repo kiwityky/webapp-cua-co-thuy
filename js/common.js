@@ -32,6 +32,9 @@ export const FALLBACK_PRODUCTS = Object.freeze([
   { id: 6, name: 'Cua gạch', description: '3–4 con/kg · gạch son đỏ', price: 600000, unit: 'kg', badge: 'Đặc biệt', sort: 6, active: true },
 ].map((p) => Object.freeze(p)));
 
+export const PAYMENT_METHOD = { cod: 'COD (trả khi nhận hàng)', chuyen_khoan: 'Chuyển khoản' };
+export const PAYMENT_STATUS = { chua_thu: 'Chưa thu', da_thu: 'Đã thu' };
+
 export const STATUS = {
   moi: 'Mới',
   xac_nhan: 'Đã xác nhận',
@@ -225,4 +228,41 @@ function openLoginDialog(onDone) {
   }
   renderAuth($('.dlg-body', d), () => { d.close(); onDone(); });
   d.showModal();
+}
+
+// Hộp thoại chọn hình thức thanh toán. Trả về 'cod' | 'chuyen_khoan', hoặc null nếu đóng/hủy.
+export function askPayment({ total = 0, phone = '' } = {}) {
+  return new Promise((resolve) => {
+    const b = SHOP.bank || {};
+    const bank = b.account
+      ? `<p>${b.name ? esc(b.name) + '<br>' : ''}Số tài khoản: <b>${esc(b.account)}</b>${b.holder ? '<br>Chủ tài khoản: <b>' + esc(b.holder) + '</b>' : ''}<br>Nội dung: <b>${esc(phone || 'SĐT đặt hàng')}</b><br>Số tiền: <b>${esc(money(total))}</b></p>`
+      : `<p>Shop sẽ nhắn số tài khoản qua Zalo hoặc điện thoại ${esc(SHOP.phoneDisplay)} sau khi nhận đơn.</p>`;
+    const d = document.createElement('dialog');
+    d.className = 'login-dialog pay-dialog';
+    d.innerHTML = `
+      <button type="button" class="dlg-close" aria-label="Đóng">×</button>
+      <form class="dlg-body" method="dialog">
+        <h3>Hình thức thanh toán</h3>
+        <p class="muted">Tổng tiền tạm tính: <b>${esc(money(total))}</b></p>
+        <label class="pay-opt"><input type="radio" name="pm" value="cod" checked>
+          <span><b>COD</b><br><span class="muted">Trả tiền mặt khi nhận hàng</span></span></label>
+        <label class="pay-opt"><input type="radio" name="pm" value="chuyen_khoan">
+          <span><b>Chuyển khoản</b><br><span class="muted">Chuyển trước hoặc khi nhận hàng</span></span></label>
+        <div class="pay-bank hidden">${bank}</div>
+        <div class="row" style="justify-content:flex-end;margin-top:12px">
+          <button type="button" class="btn small" data-act="cancel">Quay lại</button>
+          <button type="submit" class="btn btn-red primary">Xác nhận đặt hàng</button>
+        </div>
+      </form>`;
+    document.body.append(d);
+    let result = null;
+    const form = $('form', d);
+    form.onchange = () => $('.pay-bank', d).classList.toggle('hidden', form.pm.value !== 'chuyen_khoan');
+    form.onsubmit = () => { result = form.pm.value; };
+    $('.dlg-close', d).onclick = () => d.close();
+    $('[data-act=cancel]', d).onclick = () => d.close();
+    d.addEventListener('click', (e) => { if (e.target === d) d.close(); });
+    d.addEventListener('close', () => { d.remove(); resolve(result); });
+    d.showModal();
+  });
 }

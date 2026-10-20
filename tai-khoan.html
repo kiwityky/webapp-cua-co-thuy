@@ -76,7 +76,7 @@
   </main>
 
   <script type="module">
-    import { sb, configured, SHOP, esc, money, when, toast, $, STATUS, currentProfile, loadProducts, renderAuth, initNav, applyShopLinks, initAccountNav } from './js/common.js';
+    import { sb, configured, SHOP, esc, money, when, toast, $, STATUS, PAYMENT_METHOD, PAYMENT_STATUS, currentProfile, loadProducts, renderAuth, initNav, applyShopLinks, initAccountNav } from './js/common.js';
     import { renderOrderForm } from './js/order-form.js';
     import * as cart from './js/cart.js';
 
@@ -222,7 +222,8 @@
           </div>
           <div>${o.order_items.map((i) => `${esc(i.product_name)} × ${esc(i.quantity)} ${esc(i.unit)}`).join(', ')}</div>
           <div class="muted">${esc(o.address)}${o.note ? ' · ' + esc(o.note) : ''}</div>
-          ${o.delivery_time ? `<div>Giao: <b>${esc(o.delivery_time)}</b></div>` : ''}
+          ${o.delivery_time ? `<div>Thời gian giao: <b>${esc(o.delivery_time)}</b></div>` : ''}
+          <div>Thanh toán: <b>${esc(PAYMENT_METHOD[o.payment_method] || o.payment_method)}</b> · ${esc(PAYMENT_STATUS[o.payment_status] || '')}</div>
           <div class="row" style="justify-content:space-between">
             <b>${esc(money(o.total))}</b>
             ${o.points_awarded ? `<span>+${esc(o.points_awarded)} điểm</span>` : ''}

@@ -37,7 +37,9 @@ create table if not exists public.orders (
   phone          text not null,
   address        text not null,
   note           text,
-  staff_note     text,
+  delivery_time  text,           -- thời gian khách muốn nhận, ghi tự do (vd. "sáng mai 7h")
+  payment_method text not null default 'cod' check (payment_method in ('cod','chuyen_khoan')),
+  payment_status text not null default 'chua_thu' check (payment_status in ('chua_thu','da_thu')),
   status         text not null default 'moi'
                  check (status in ('moi','xac_nhan','dang_giao','da_giao','huy')),
   total          integer not null default 0,
@@ -47,7 +49,14 @@ create table if not exists public.orders (
   created_at     timestamptz not null default now(),
   updated_at     timestamptz not null default now()
 );
-alter table public.orders add column if not exists delivery_time text;  -- thời gian giao khách hẹn
+-- Bảng đã tạo từ bản cũ: thêm cột mới (chạy lại file này an toàn)
+alter table public.orders add column if not exists delivery_time text;
+alter table public.orders add column if not exists payment_method text not null default 'cod'
+  check (payment_method in ('cod','chuyen_khoan'));
+alter table public.orders add column if not exists payment_status text not null default 'chua_thu'
+  check (payment_status in ('chua_thu','da_thu'));
+-- Đã bỏ tính năng ghi chú nội bộ: dọn cột cũ nếu CSDL từng chạy bản trước
+alter table public.orders drop column if exists staff_note;
 create index if not exists orders_customer_idx on public.orders(customer_id);
 create index if not exists orders_status_idx   on public.orders(status, created_at desc);
 
@@ -127,11 +136,13 @@ create trigger order_points before update on public.orders
 
 -- ---------- Tạo đơn: giá luôn lấy từ bảng products (khách không sửa giá được) ----------
 -- p_items: [{"product_id": 1, "quantity": 1.5}, ...]
--- Bản cũ chưa có thời gian giao: xóa để không bị trùng hàm khi gọi
+-- Bỏ chữ ký cũ (chưa có thời gian giao) để không bị trùng hàm
 drop function if exists public.create_order(text,text,text,text,jsonb,uuid);
+drop function if exists public.create_order(text,text,text,text,jsonb,uuid,text);
 create or replace function public.create_order(
   p_customer_name text, p_phone text, p_address text, p_note text,
-  p_items jsonb, p_customer_id uuid default null, p_delivery_time text default null
+  p_items jsonb, p_customer_id uuid default null, p_delivery_time text default null,
+  p_payment_method text default 'cod'
 ) returns bigint
 language plpgsql security definer set search_path = public as $$
 declare
@@ -154,6 +165,9 @@ begin
   if jsonb_array_length(p_items) > 20 then
     raise exception 'Đơn có quá nhiều dòng sản phẩm';
   end if;
+  if coalesce(p_payment_method,'cod') not in ('cod','chuyen_khoan') then
+    raise exception 'Hình thức thanh toán không hợp lệ';
+  end if;
 
   if is_staff() then
     -- Nhân viên đặt hộ: gắn vào tài khoản khách nếu trùng số điện thoại
@@ -163,9 +177,9 @@ begin
     v_cust := auth.uid();
   end if;
 
-  insert into orders (customer_id, customer_name, phone, address, note, delivery_time, created_by)
+  insert into orders (customer_id, customer_name, phone, address, note, delivery_time, payment_method, created_by)
   values (v_cust, trim(p_customer_name), trim(p_phone), trim(p_address), p_note,
-          nullif(trim(coalesce(p_delivery_time,'')),''), auth.uid())
+          nullif(trim(coalesce(p_delivery_time,'')),''), coalesce(p_payment_method,'cod'), auth.uid())
   returning id into v_order;
 
   for it in select * from jsonb_array_elements(p_items) loop
@@ -187,9 +201,11 @@ end $$;
 -- Đơn đã giao: điểm của khách được cộng/trừ phần chênh lệch cho khớp tổng tiền mới.
 -- p_items: [{"product_id": 1, "quantity": 1.5}, ...]
 drop function if exists public.update_order(bigint,text,text,text,text,jsonb);
+drop function if exists public.update_order(bigint,text,text,text,text,jsonb,text);
 create or replace function public.update_order(
   p_order bigint, p_customer_name text, p_phone text, p_address text, p_note text,
-  p_items jsonb, p_delivery_time text default null
+  p_items jsonb, p_delivery_time text default null,
+  p_payment_method text default null, p_payment_status text default null
 ) returns void
 language plpgsql security definer set search_path = public as $$
 declare
@@ -213,6 +229,12 @@ begin
   end if;
   if jsonb_array_length(p_items) > 20 then
     raise exception 'Đơn có quá nhiều dòng sản phẩm';
+  end if;
+  if p_payment_method is not null and p_payment_method not in ('cod','chuyen_khoan') then
+    raise exception 'Hình thức thanh toán không hợp lệ';
+  end if;
+  if p_payment_status is not null and p_payment_status not in ('chua_thu','da_thu') then
+    raise exception 'Trạng thái thanh toán không hợp lệ';
   end if;
 
   select coalesce(max(id),0) into v_max from order_items where order_id = p_order;
@@ -241,6 +263,8 @@ begin
   update orders set customer_name = trim(p_customer_name), phone = trim(p_phone),
     address = trim(p_address), note = nullif(trim(coalesce(p_note,'')),''),
     delivery_time = nullif(trim(coalesce(p_delivery_time,'')),''),
+    payment_method = coalesce(p_payment_method, o.payment_method),
+    payment_status = coalesce(p_payment_status, o.payment_status),
     total = v_total, points_awarded = v_new
   where id = p_order;
 end $$;
@@ -325,14 +349,14 @@ create policy p_items_write on public.order_items for all
   using (is_staff()) with check (is_staff());
 
 -- Quyền gọi hàm
-revoke execute on function public.create_order(text,text,text,text,jsonb,uuid,text) from anon, public;
+revoke execute on function public.create_order(text,text,text,text,jsonb,uuid,text,text) from anon, public;
 revoke execute on function public.cancel_my_order(bigint) from anon, public;
-revoke execute on function public.update_order(bigint,text,text,text,text,jsonb,text) from anon, public;
+revoke execute on function public.update_order(bigint,text,text,text,text,jsonb,text,text,text) from anon, public;
 revoke execute on function public.set_role(text,text) from anon, public;
 revoke execute on function public.list_staff() from anon, public;
-grant  execute on function public.create_order(text,text,text,text,jsonb,uuid,text) to authenticated;
+grant  execute on function public.create_order(text,text,text,text,jsonb,uuid,text,text) to authenticated;
 grant  execute on function public.cancel_my_order(bigint) to authenticated;
-grant  execute on function public.update_order(bigint,text,text,text,text,jsonb,text) to authenticated;
+grant  execute on function public.update_order(bigint,text,text,text,text,jsonb,text,text,text) to authenticated;
 grant  execute on function public.set_role(text,text) to authenticated;
 grant  execute on function public.list_staff() to authenticated;
 
@@ -340,6 +364,10 @@ grant  execute on function public.list_staff() to authenticated;
 do $$ begin
   alter publication supabase_realtime add table public.orders;
 exception when duplicate_object then null; end $$;
+
+-- ---------- Sửa chính tả "Cua dơn" -> "Cua don" (DB đã seed từ bản cũ) ----------
+update public.products    set name = 'Cua don'      where name = 'Cua dơn';
+update public.order_items set product_name = 'Cua don' where product_name = 'Cua dơn';
 
 -- ---------- Dữ liệu ban đầu (bảng giá 18/10/2026) ----------
 insert into public.settings (key, value) values
@@ -356,6 +384,3 @@ select * from (values
   ('Cua gạch', '3–4 con/kg · gạch son đỏ', 600000, 'Đặc biệt', 6)
 ) v(name, description, price, badge, sort)
 where not exists (select 1 from public.products);
-
--- Sửa tên sản phẩm (18/10/2026): "Cua dơn" -> "Cua don" cho khớp bảng giá
-update public.products set name = 'Cua don' where name = 'Cua dơn';

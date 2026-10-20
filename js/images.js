@@ -21,6 +21,7 @@ export const IMAGES = {
 // Khớp theo products.name (xem supabase/schema.sql)
 export const PRODUCT_IMAGES = {
   'Cua don': 'cua-song-day-rut',
+  'Cua dơn': 'cua-song-day-rut', // tên cũ, giữ cho DB chưa chạy lại schema
   'Cua tứ': 'gach-vang',
   'Cua Y3': 'thit-chac',
   'Cua Y5': 'cang-chac',

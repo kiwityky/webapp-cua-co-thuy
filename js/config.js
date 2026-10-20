@@ -8,4 +8,5 @@ export const SHOP = {
   phone: '0921874280',
   phoneDisplay: '0921 874 280',
   zalo: 'https://zalo.me/0921874280',
+  bank: { name: 'Tên ngân hàng', account: 'Số tài khoản', holder: 'Chủ tài khoản' },
 };

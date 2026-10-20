@@ -1,4 +1,4 @@
-import { sb, esc, money, toast, $ } from './common.js';
+import { sb, esc, money, toast, $, askPayment } from './common.js';
 
 // Form tạo đơn dùng chung cho khách (tự đặt) và nhân viên (đặt hộ)
 export function renderOrderForm(root, products, defaults = {}, onCreated) {
@@ -13,8 +13,8 @@ export function renderOrderForm(root, products, defaults = {}, onCreated) {
       <label>Địa chỉ giao<textarea name="address" required>${esc(defaults.address)}</textarea></label>
       <div id="lines"></div>
       <button type="button" class="btn small" id="addLine">+ Thêm loại cua</button>
-      <label style="margin-top:10px">Thời gian giao<input name="delivery_time" maxlength="100" placeholder="VD: 9h sáng 19/10, chiều mai, càng sớm càng tốt"></label>
-      <label>Ghi chú<textarea name="note" placeholder="Yêu cầu buộc dây, gọi trước khi giao, ..."></textarea></label>
+      <label style="margin-top:10px">Thời gian giao<input name="delivery_time" maxlength="100" placeholder="VD: sáng mai 7h, trước 17h hôm nay"></label>
+      <label>Ghi chú<textarea name="note" maxlength="500" placeholder="Yêu cầu buộc dây, cách bó, ..."></textarea></label>
       <div class="row" style="justify-content:space-between">
         <b>Tạm tính: <span id="sum">0đ</span></b>
         <button class="btn btn-red primary" type="submit">Gửi đơn</button>
@@ -60,12 +60,16 @@ export function renderOrderForm(root, products, defaults = {}, onCreated) {
     if (!items.length) return toast('Chưa chọn sản phẩm', true);
     const btn = $('button[type=submit]', form);
     if (!sb) return toast('Hệ thống đặt hàng online đang được cài đặt, vui lòng nhắn Zalo.', true);
+    const total = items.reduce((s, i) => s + priceOf(i.product_id) * i.quantity, 0);
+    const pay = await askPayment({ total: Math.round(total), phone: f.phone });
+    if (!pay) return;
     btn.disabled = true;
     let data, error;
     try {
       ({ data, error } = await sb.rpc('create_order', {
         p_customer_name: f.name, p_phone: f.phone, p_address: f.address,
         p_note: f.note || null, p_items: items, p_delivery_time: f.delivery_time || null,
+        p_payment_method: pay,
       }));
     } catch (err) {
       error = err;

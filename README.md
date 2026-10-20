@@ -6,7 +6,7 @@ Một web gồm 3 khu, dùng chung một nguồn dữ liệu:
 |---|---|---|
 | `index.html` | Khách vãng lai | Quảng bá, bảng giá (lấy từ CSDL), nút Zalo/gọi điện |
 | `tai-khoan.html` | Khách thành viên | Đăng ký/đăng nhập, đặt hàng, xem đơn của mình, **tích điểm** |
-| `quan-ly.html` | Nhân viên công ty | Xem **tất cả** đơn (tên, SĐT, địa chỉ, số lượng, ghi chú), đổi trạng thái, ghi chú nội bộ, tạo đơn hộ khách gọi Zalo, sửa giá; admin cấp quyền nhân viên |
+| `quan-ly.html` | Nhân viên công ty | Xem **tất cả** đơn (tên, SĐT, địa chỉ, số lượng, ghi chú), đổi trạng thái, sửa đơn, theo dõi thanh toán (COD / chuyển khoản, đã thu hay chưa), tạo đơn hộ khách gọi Zalo, sửa giá; admin cấp quyền nhân viên |
 
 Công nghệ: HTML/CSS/JS thuần (ES module, không cần build) + **Supabase** (Postgres, Auth, Realtime).
 Hosting: **GitHub Pages** (miễn phí, tên miền `ten-ban.github.io`).
@@ -61,7 +61,7 @@ python -m http.server 8000   # rồi mở http://localhost:8000
 index.html          trang quảng bá
 tai-khoan.html      khu khách hàng
 quan-ly.html        khu nhân viên
-js/config.js        URL + anon key Supabase, thông tin shop
+js/config.js        URL + anon key Supabase, thông tin shop, tài khoản ngân hàng (SHOP.bank) hiện khi khách chọn chuyển khoản
 js/common.js        kết nối Supabase, đăng nhập, tiện ích
 js/order-form.js    form đặt hàng dùng chung
 css/style.css
