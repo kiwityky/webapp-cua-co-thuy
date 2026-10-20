@@ -52,9 +52,12 @@
           <div class="card">
             <div class="muted">Xin chào</div>
             <h2 id="hello"></h2>
-            <div class="muted">Điểm tích lũy</div>
+            <div id="memberBadge" class="hidden"><span class="badge" style="margin-left:0">Thành viên Cua Cô Thúy</span></div>
+            <div class="muted" style="margin-top:8px">Điểm hiện có</div>
             <div class="points" id="points">0</div>
+            <div id="memberInfo"></div>
             <div class="muted" id="rateNote"></div>
+            <p class="muted hidden" id="memberHint" style="margin-top:8px"></p>
           </div>
           <form class="card" id="profileForm">
             <h3>Thông tin giao hàng</h3>
@@ -86,6 +89,8 @@
     cart.bindCount();
 
     const show = (el, on = true) => el && el.classList.toggle('hidden', !on);
+    let member = null; // dòng members gắn với tài khoản (null = chưa là thành viên)
+    let rateVnd = 10000;
     const goOrder = () => { if (location.hash === '#dat-hang') $('#dat-hang')?.scrollIntoView({ block: 'start' }); };
 
     $('#logout')?.addEventListener('click', async (e) => {
@@ -186,9 +191,13 @@
       $('#cartPreview').innerHTML = '';
       show($('#app')); show($('#dat-hang')); show($('#myOrdersBox')); show($('#logout'));
       $('#hello').textContent = me.full_name || me.email;
-      $('#points').textContent = me.points ?? 0;
       const { data: rate } = await sb.from('settings').select('value').eq('key', 'vnd_per_point').maybeSingle();
-      $('#rateNote').textContent = `Mỗi ${money(rate?.value || 10000)} trên đơn đã giao = 1 điểm`;
+      rateVnd = Number(rate?.value) || 10000;
+      $('#rateNote').textContent = `Mỗi ${money(rateVnd)} trên đơn đã giao = 1 điểm`;
+      const { data: m, error: memErr } = await sb.from('members').select('*').eq('user_id', me.id).maybeSingle();
+      if (memErr) console.error(memErr);
+      member = m || null;
+      renderMember(0);
 
       const pf = $('#profileForm');
       for (const k of ['full_name', 'phone', 'address']) pf[k].value = me[k] || '';
@@ -210,10 +219,27 @@
       goOrder();
     }
 
+    // Thẻ chào mừng: huy hiệu thành viên, điểm, thống kê. orderCount = số đơn của khách (để gợi ý gắn tài khoản)
+    function renderMember(orderCount) {
+      show($('#memberBadge'), !!member);
+      $('#points').textContent = member?.points ?? 0;
+      $('#memberInfo').innerHTML = member ? `
+        <div>Đã mua <b>${esc(member.order_count ?? 0)}</b> đơn · tổng <b>${esc(money(member.total_spent ?? 0))}</b></div>
+        ${member.first_order_at ? `<div class="muted">Thành viên từ ${esc(new Date(member.first_order_at).toLocaleDateString('vi-VN'))}</div>` : ''}` : '';
+      const hint = $('#memberHint');
+      if (!member) {
+        hint.textContent = orderCount > 0
+          ? 'Nếu bạn đã mua bằng số điện thoại này mà chưa thấy điểm, hãy nhắn Zalo để cửa hàng gắn tài khoản.'
+          : `Sau lần nhận hàng đầu tiên, bạn tự động trở thành thành viên và được tích điểm (mỗi ${money(rateVnd)} = 1 điểm).`;
+        show(hint);
+      } else show(hint, false);
+    }
+
     async function loadOrders() {
       const { data, error } = await sb.from('orders')
         .select('*, order_items(*)').order('created_at', { ascending: false });
       if (error) return toast(error.message, true);
+      renderMember(data.length);
       $('#myOrders').innerHTML = data.length ? data.map((o) => `
         <div class="card order-card">
           <div class="head">
@@ -223,10 +249,11 @@
           <div>${o.order_items.map((i) => `${esc(i.product_name)} × ${esc(i.quantity)} ${esc(i.unit)}`).join(', ')}</div>
           <div class="muted">${esc(o.address)}${o.note ? ' · ' + esc(o.note) : ''}</div>
           ${o.delivery_time ? `<div>Thời gian giao: <b>${esc(o.delivery_time)}</b></div>` : ''}
+          ${o.status === 'da_giao' && o.delivered_at ? `<div>Đã giao lúc: <b>${esc(when(o.delivered_at))}</b></div>` : ''}
           <div>Thanh toán: <b>${esc(PAYMENT_METHOD[o.payment_method] || o.payment_method)}</b> · ${esc(PAYMENT_STATUS[o.payment_status] || '')}</div>
           <div class="row" style="justify-content:space-between">
             <b>${esc(money(o.total))}</b>
-            ${o.points_awarded ? `<span>+${esc(o.points_awarded)} điểm</span>` : ''}
+            ${o.points_awarded ? `<b style="color:var(--red);font-size:1.05rem">+${esc(o.points_awarded)} điểm</b>` : ''}
             ${o.status === 'moi' ? `<button class="btn small" data-cancel="${esc(o.id)}">Hủy đơn</button>` : ''}
           </div>
         </div>`).join('') : '<p class="muted">Chưa có đơn nào.</p>';

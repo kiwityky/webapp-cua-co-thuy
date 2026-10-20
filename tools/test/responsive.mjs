@@ -69,9 +69,16 @@ const VIEWPORTS = [[360, 740], [390, 844], [768, 1024], [1024, 768], [1440, 900]
 const MOBILE_MAX = 600;
 const STUB = fs.readFileSync(path.join(HERE, 'supabase-stub.mjs'), 'utf8');
 
-async function setupRoutes(context, origin, ext) {
+// withSupabase: giả lập đã cấu hình Supabase (config.js mẫu → URL giả) để js/common.js nạp stub thay vì để sb = null.
+// Dùng cho quan-ly.html để các tab Đã giao / Thành viên chạy qua code truy vấn thật (stub trả dữ liệu rỗng).
+async function setupRoutes(context, origin, ext, withSupabase = false) {
   await context.route('**/*', route => {
     const url = route.request().url();
+    if (withSupabase && url.startsWith(origin) && new URL(url).pathname === '/js/config.js') {
+      const cfg = fs.readFileSync(path.join(ROOT, 'js', 'config.js'), 'utf8')
+        .replace(/YOUR-PROJECT/g, 'stub-project').replace(/YOUR-ANON-KEY/g, 'stub-anon-key');
+      return route.fulfill({ status: 200, contentType: 'text/javascript', headers: { 'cache-control': 'no-store' }, body: cfg });
+    }
     if (url.startsWith(origin)) return route.continue();
     if (/^https:\/\/cdn\.jsdelivr\.net\/npm\/@supabase\/supabase-js@[^/]+\/\+esm/.test(url))
       return route.fulfill({ status: 200, contentType: 'text/javascript', headers: { 'access-control-allow-origin': '*' }, body: STUB });
@@ -113,7 +120,7 @@ async function runCase(browser, origin, pageName, [w, h]) {
   const add = (sev, check, msg) => issues.push({ sev, check, msg });
   const ext = new Set();
   const context = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1, isMobile: w <= MOBILE_MAX, hasTouch: w <= MOBILE_MAX, locale: 'vi-VN' });
-  await setupRoutes(context, origin, ext);
+  await setupRoutes(context, origin, ext, pageName === 'quan-ly.html');
   await context.addInitScript(LCP_INIT + DESC_FN);
   const page = await context.newPage();
   const bytes = { initial: 0, total: 0, byType: {} };
@@ -310,6 +317,25 @@ async function runCase(browser, origin, pageName, [w, h]) {
           if (!closed) add('thấp', 'Lightbox', 'Escape không đóng dialog#lightbox');
         }
       } catch (e) { mark('Lightbox', false); add('cao', 'Lightbox', `Lỗi: ${errMsg(e)}`); }
+    }
+
+    // 6. Trang quản lý: bấm lần lượt các tab (nhất là Đã giao và Thành viên) không được sinh lỗi console/pageerror.
+    // Chưa đăng nhập thì thanh menu bị ẩn nên gọi click() bằng DOM; stub Supabase trả dữ liệu rỗng.
+    if (pageName === 'quan-ly.html') {
+      try {
+        const tabs = await page.evaluate(() => [...document.querySelectorAll('[data-tab]')].map(a => a.dataset.tab));
+        const missing = ['orders', 'delivered', 'members'].filter(t => !tabs.includes(t));
+        mark('Tab Đã giao/Thành viên', missing.length === 0);
+        if (missing.length) add('cao', 'Tab Đã giao/Thành viên', `Thiếu [data-tab] cho: ${missing.join(', ')}`);
+        for (const t of ['delivered', 'members', 'orders']) {
+          if (!tabs.includes(t)) continue;
+          await page.evaluate(t => document.querySelector(`[data-tab="${t}"]`).click(), t);
+          await page.waitForTimeout(400);
+          const shown = await page.evaluate(t => { const s = document.getElementById('tab-' + t); return !!s && !s.classList.contains('hidden'); }, t);
+          mark('Tab Đã giao/Thành viên', shown);
+          if (!shown) add('cao', 'Tab Đã giao/Thành viên', `#tab-${t} không hiện sau khi bấm [data-tab="${t}"]`);
+        }
+      } catch (e) { mark('Tab Đã giao/Thành viên', false); add('cao', 'Tab Đã giao/Thành viên', `Lỗi: ${errMsg(e)}`); }
     }
   } catch (e) {
     add('cao', 'load', `Không tải được trang: ${errMsg(e)}`);

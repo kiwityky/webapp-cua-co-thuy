@@ -10,7 +10,6 @@ create table if not exists public.profiles (
   phone       text,
   address     text,
   role        text not null default 'customer' check (role in ('customer','staff','admin')),
-  points      integer not null default 0,
   created_at  timestamptz not null default now()
 );
 
@@ -30,6 +29,30 @@ create table if not exists public.settings (
   value text not null
 );
 
+-- Chuẩn hóa số điện thoại: chỉ giữ chữ số, +84xxxxxxxxx / 84xxxxxxxxx -> 0xxxxxxxxx
+create or replace function public.norm_phone(p text) returns text
+language sql immutable as $$
+  select case when d ~ '^84[0-9]{9,10}$' then '0' || substr(d, 3) else d end
+  from (select regexp_replace(coalesce(p, ''), '[^0-9]', '', 'g') as d) s;
+$$;
+
+-- Thành viên của cửa hàng = khách đã có đơn "đã giao". Khóa theo số điện thoại.
+-- Bảng này do trigger/hàm quản lý; client chỉ đọc (RLS) và gọi update_member/link_member.
+create table if not exists public.members (
+  id             bigint generated always as identity primary key,
+  phone          text not null unique,                       -- đã chuẩn hóa
+  full_name      text,
+  address        text,
+  note           text,
+  user_id        uuid unique references public.profiles(id) on delete set null,  -- tài khoản đã gắn (nhân viên gắn)
+  points         integer not null default 0,
+  total_spent    integer not null default 0,
+  order_count    integer not null default 0,
+  first_order_at timestamptz,
+  last_order_at  timestamptz,
+  created_at     timestamptz not null default now()
+);
+
 create table if not exists public.orders (
   id             bigint generated always as identity primary key,
   customer_id    uuid references public.profiles(id) on delete set null,
@@ -44,6 +67,8 @@ create table if not exists public.orders (
                  check (status in ('moi','xac_nhan','dang_giao','da_giao','huy')),
   total          integer not null default 0,
   points_awarded integer not null default 0,
+  member_id      bigint references public.members(id) on delete set null,
+  delivered_at   timestamptz,
   created_by     uuid references public.profiles(id) on delete set null,
   updated_by     uuid references public.profiles(id) on delete set null,
   created_at     timestamptz not null default now(),
@@ -55,10 +80,14 @@ alter table public.orders add column if not exists payment_method text not null 
   check (payment_method in ('cod','chuyen_khoan'));
 alter table public.orders add column if not exists payment_status text not null default 'chua_thu'
   check (payment_status in ('chua_thu','da_thu'));
+alter table public.orders add column if not exists member_id bigint references public.members(id) on delete set null;
+alter table public.orders add column if not exists delivered_at timestamptz;
 -- Đã bỏ tính năng ghi chú nội bộ: dọn cột cũ nếu CSDL từng chạy bản trước
 alter table public.orders drop column if exists staff_note;
 create index if not exists orders_customer_idx on public.orders(customer_id);
 create index if not exists orders_status_idx   on public.orders(status, created_at desc);
+create index if not exists orders_member_idx   on public.orders(member_id);
+create index if not exists orders_delivered_idx on public.orders(delivered_at desc) where status = 'da_giao';
 
 create table if not exists public.order_items (
   id           bigint generated always as identity primary key,
@@ -97,35 +126,64 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- Khách tự sửa profile được, nhưng KHÔNG được tự đổi role/điểm
+-- Khách tự sửa profile được, nhưng KHÔNG được tự đổi role
 create or replace function public.guard_profile() returns trigger
 language plpgsql as $$
 begin
   if current_user in ('authenticated','anon') and not public.is_admin()
-     and (new.role is distinct from old.role or new.points is distinct from old.points) then
-    raise exception 'Không có quyền đổi vai trò hoặc điểm';
+     and new.role is distinct from old.role then
+    raise exception 'Không có quyền đổi vai trò';
   end if;
   return new;
 end $$;
+
+-- Điểm giờ nằm ở bảng members (bản cũ để ở profiles.points)
+alter table public.profiles drop column if exists points;
 
 drop trigger if exists guard_profile on public.profiles;
 create trigger guard_profile before update on public.profiles
   for each row execute function public.guard_profile();
 
--- ---------- Tích điểm: cộng khi đơn "đã giao", trừ lại nếu đổi trạng thái ----------
+-- ---------- Đơn "đã giao": lưu khách thành thành viên + tích điểm ----------
+-- Chuyển sang da_giao: tạo/cập nhật thành viên theo số điện thoại, cộng điểm, tổng tiền, số đơn.
+-- Chuyển ngược khỏi da_giao: hoàn lại các số trên (thành viên và thông tin vẫn được giữ).
 create or replace function public.order_points() returns trigger
 language plpgsql security definer set search_path = public as $$
-declare rate integer;
+declare rate integer; pts integer; mid bigint;
 begin
   new.updated_at := now();
   new.updated_by := auth.uid();
-  if new.status = 'da_giao' and old.status <> 'da_giao' and new.customer_id is not null then
-    select coalesce(value::int, 10000) into rate from settings where key = 'vnd_per_point';
-    new.points_awarded := floor(new.total / greatest(coalesce(rate,10000),1));
-    update profiles set points = points + new.points_awarded where id = new.customer_id;
-  elsif old.status = 'da_giao' and new.status <> 'da_giao' and old.customer_id is not null then
-    update profiles set points = greatest(points - old.points_awarded, 0) where id = old.customer_id;
+  if new.status = 'da_giao' and old.status <> 'da_giao' then
+    select coalesce(nullif(value,'')::int, 10000) into rate from settings where key = 'vnd_per_point';
+    pts := floor(new.total / greatest(coalesce(rate,10000),1));
+    insert into members (phone, full_name, address, user_id, points, total_spent, order_count,
+                         first_order_at, last_order_at)
+    values (norm_phone(new.phone), new.customer_name, new.address,
+            -- chỉ tự gắn tài khoản khi thành viên MỚI do chính tài khoản đó đặt; các trường hợp khác nhân viên gắn tay
+            (select new.customer_id where new.customer_id is not null
+               and not exists (select 1 from members z where z.user_id = new.customer_id)),
+            pts, new.total, 1, now(), now())
+    on conflict (phone) do update set
+      points       = members.points + pts,
+      total_spent  = members.total_spent + new.total,
+      order_count  = members.order_count + 1,
+      last_order_at = now(),
+      full_name    = coalesce(nullif(trim(members.full_name),''), excluded.full_name),
+      address      = coalesce(nullif(trim(excluded.address),''), members.address)
+    returning id into mid;
+    new.member_id := mid;
+    new.points_awarded := pts;
+    new.delivered_at := now();
+  elsif old.status = 'da_giao' and new.status <> 'da_giao' then
+    if old.member_id is not null then
+      update members set points = greatest(points - old.points_awarded, 0),
+                         total_spent = greatest(total_spent - old.total, 0),
+                         order_count = greatest(order_count - 1, 0)
+      where id = old.member_id;
+    end if;
+    new.member_id := null;
     new.points_awarded := 0;
+    new.delivered_at := null;
   end if;
   return new;
 end $$;
@@ -133,6 +191,23 @@ end $$;
 drop trigger if exists order_points on public.orders;
 create trigger order_points before update on public.orders
   for each row execute function public.order_points();
+
+-- Admin xóa một đơn đã giao: hoàn lại số liệu của thành viên
+create or replace function public.order_delete() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if old.status = 'da_giao' and old.member_id is not null then
+    update members set points = greatest(points - old.points_awarded, 0),
+                       total_spent = greatest(total_spent - old.total, 0),
+                       order_count = greatest(order_count - 1, 0)
+    where id = old.member_id;
+  end if;
+  return old;
+end $$;
+
+drop trigger if exists order_delete on public.orders;
+create trigger order_delete before delete on public.orders
+  for each row execute function public.order_delete();
 
 -- ---------- Tạo đơn: giá luôn lấy từ bảng products (khách không sửa giá được) ----------
 -- p_items: [{"product_id": 1, "quantity": 1.5}, ...]
@@ -154,6 +229,9 @@ begin
      or coalesce(trim(p_address),'') = '' then
     raise exception 'Thiếu tên, số điện thoại hoặc địa chỉ';
   end if;
+  if length(norm_phone(p_phone)) not between 9 and 11 then
+    raise exception 'Số điện thoại không hợp lệ';
+  end if;
   if length(p_customer_name) > 100 or length(p_phone) > 20
      or length(p_address) > 300 or length(coalesce(p_note,'')) > 500
      or length(coalesce(p_delivery_time,'')) > 100 then
@@ -170,9 +248,9 @@ begin
   end if;
 
   if is_staff() then
-    -- Nhân viên đặt hộ: gắn vào tài khoản khách nếu trùng số điện thoại
+    -- Nhân viên đặt hộ: gắn vào tài khoản của thành viên đã được nhân viên gắn theo số điện thoại
     v_cust := coalesce(p_customer_id,
-              (select id from profiles where phone = trim(p_phone) and role = 'customer' limit 1));
+              (select user_id from members where phone = norm_phone(p_phone)));
   else
     v_cust := auth.uid();
   end if;
@@ -198,7 +276,7 @@ end $$;
 
 -- Nhân viên sửa đơn đã tạo: thông tin khách + danh sách hàng.
 -- Dòng hàng giữ nguyên đơn giá cũ nếu cùng sản phẩm; sản phẩm mới thêm vào lấy giá hiện tại.
--- Đơn đã giao: điểm của khách được cộng/trừ phần chênh lệch cho khớp tổng tiền mới.
+-- Đơn đã giao: điểm và tổng tiền của thành viên được cộng/trừ phần chênh lệch cho khớp tổng tiền mới.
 -- p_items: [{"product_id": 1, "quantity": 1.5}, ...]
 drop function if exists public.update_order(bigint,text,text,text,text,jsonb);
 drop function if exists public.update_order(bigint,text,text,text,text,jsonb,text);
@@ -218,6 +296,9 @@ begin
   if coalesce(trim(p_customer_name),'') = '' or coalesce(trim(p_phone),'') = ''
      or coalesce(trim(p_address),'') = '' then
     raise exception 'Thiếu tên, số điện thoại hoặc địa chỉ';
+  end if;
+  if length(norm_phone(p_phone)) not between 9 and 11 then
+    raise exception 'Số điện thoại không hợp lệ';
   end if;
   if length(p_customer_name) > 100 or length(p_phone) > 20
      or length(p_address) > 300 or length(coalesce(p_note,'')) > 500
@@ -254,10 +335,12 @@ begin
   delete from order_items where order_id = p_order and id <= v_max;
 
   v_new := o.points_awarded;
-  if o.status = 'da_giao' and o.customer_id is not null then
-    select coalesce(value::int, 10000) into rate from settings where key = 'vnd_per_point';
+  if o.status = 'da_giao' and o.member_id is not null then
+    select coalesce(nullif(value,'')::int, 10000) into rate from settings where key = 'vnd_per_point';
     v_new := floor(v_total / greatest(coalesce(rate,10000),1));
-    update profiles set points = greatest(points + v_new - o.points_awarded, 0) where id = o.customer_id;
+    update members set points = greatest(points + v_new - o.points_awarded, 0),
+                       total_spent = greatest(total_spent + v_total - o.total, 0)
+    where id = o.member_id;
   end if;
 
   update orders set customer_name = trim(p_customer_name), phone = trim(p_phone),
@@ -267,6 +350,50 @@ begin
     payment_status = coalesce(p_payment_status, o.payment_status),
     total = v_total, points_awarded = v_new
   where id = p_order;
+end $$;
+
+-- Nhân viên sửa thông tin thành viên (không sửa được điểm)
+create or replace function public.update_member(
+  p_member bigint, p_full_name text, p_address text, p_note text
+) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_staff() then raise exception 'Chỉ nhân viên'; end if;
+  if length(coalesce(p_full_name,'')) > 100 or length(coalesce(p_address,'')) > 300
+     or length(coalesce(p_note,'')) > 500 then
+    raise exception 'Thông tin quá dài';
+  end if;
+  update members set full_name = nullif(trim(coalesce(p_full_name,'')),''),
+                     address   = nullif(trim(coalesce(p_address,'')),''),
+                     note      = nullif(trim(coalesce(p_note,'')),'')
+  where id = p_member;
+  if not found then raise exception 'Không tìm thấy thành viên'; end if;
+end $$;
+
+-- Nhân viên gắn tài khoản đăng nhập của khách vào thành viên (p_email trống = bỏ gắn).
+-- Gắn xong khách thấy điểm và các đơn của thành viên khi đăng nhập.
+create or replace function public.link_member(p_member bigint, p_email text default null)
+returns void
+language plpgsql security definer set search_path = public as $$
+declare uid uuid;
+begin
+  if not is_staff() then raise exception 'Chỉ nhân viên'; end if;
+  perform 1 from members where id = p_member for update;
+  if not found then raise exception 'Không tìm thấy thành viên'; end if;
+  if coalesce(trim(p_email),'') = '' then
+    update members set user_id = null where id = p_member;
+    return;
+  end if;
+  select id into uid from auth.users where lower(email) = lower(trim(p_email));
+  if uid is null then raise exception 'Không tìm thấy email'; end if;
+  if exists (select 1 from profiles where id = uid and role <> 'customer') then
+    raise exception 'Đây là tài khoản nhân viên, không gắn làm thành viên';
+  end if;
+  if exists (select 1 from members where user_id = uid and id <> p_member) then
+    raise exception 'Tài khoản này đã gắn với thành viên khác';
+  end if;
+  update members set user_id = uid where id = p_member;
+  update orders set customer_id = uid where member_id = p_member and customer_id is null;
 end $$;
 
 -- Khách tự hủy đơn khi đơn còn "mới"
@@ -305,6 +432,7 @@ alter table public.products    enable row level security;
 alter table public.settings    enable row level security;
 alter table public.orders      enable row level security;
 alter table public.order_items enable row level security;
+alter table public.members     enable row level security;
 
 -- profiles: xem/sửa của mình; nhân viên xem tất cả; admin sửa tất cả
 drop policy if exists p_profiles_select on public.profiles;
@@ -313,6 +441,12 @@ create policy p_profiles_select on public.profiles for select
 drop policy if exists p_profiles_update on public.profiles;
 create policy p_profiles_update on public.profiles for update
   using (id = auth.uid() or is_admin()) with check (id = auth.uid() or is_admin());
+
+-- members: khách chỉ thấy dòng của mình (đã được nhân viên gắn tài khoản); nhân viên thấy tất cả.
+-- Không có policy ghi: chỉ trigger và hàm update_member/link_member mới sửa được.
+drop policy if exists p_members_select on public.members;
+create policy p_members_select on public.members for select
+  using (user_id = auth.uid() or is_staff());
 
 -- products: ai cũng xem hàng đang bán; nhân viên quản lý
 drop policy if exists p_products_select on public.products;
@@ -352,11 +486,15 @@ create policy p_items_write on public.order_items for all
 revoke execute on function public.create_order(text,text,text,text,jsonb,uuid,text,text) from anon, public;
 revoke execute on function public.cancel_my_order(bigint) from anon, public;
 revoke execute on function public.update_order(bigint,text,text,text,text,jsonb,text,text,text) from anon, public;
+revoke execute on function public.update_member(bigint,text,text,text) from anon, public;
+revoke execute on function public.link_member(bigint,text) from anon, public;
 revoke execute on function public.set_role(text,text) from anon, public;
 revoke execute on function public.list_staff() from anon, public;
 grant  execute on function public.create_order(text,text,text,text,jsonb,uuid,text,text) to authenticated;
 grant  execute on function public.cancel_my_order(bigint) to authenticated;
 grant  execute on function public.update_order(bigint,text,text,text,text,jsonb,text,text,text) to authenticated;
+grant  execute on function public.update_member(bigint,text,text,text) to authenticated;
+grant  execute on function public.link_member(bigint,text) to authenticated;
 grant  execute on function public.set_role(text,text) to authenticated;
 grant  execute on function public.list_staff() to authenticated;
 
@@ -384,3 +522,56 @@ select * from (values
   ('Cua gạch', '3–4 con/kg · gạch son đỏ', 600000, 'Đặc biệt', 6)
 ) v(name, description, price, badge, sort)
 where not exists (select 1 from public.products);
+
+-- ---------- Cập nhật từ bản cũ: dựng thành viên từ các đơn đã giao trước đây ----------
+-- Chạy lại nhiều lần vẫn an toàn: điểm/tổng tiền/số đơn luôn tính lại từ các đơn đã giao.
+create or replace function public.rebuild_members() returns void
+language plpgsql security definer set search_path = public as $$
+declare rate integer; new_ids bigint[];
+begin
+  select coalesce(nullif(value,'')::int, 10000) into rate from settings where key = 'vnd_per_point';
+  rate := greatest(coalesce(rate,10000),1);
+
+  update orders set delivered_at = coalesce(delivered_at, updated_at)
+  where status = 'da_giao' and delivered_at is null;
+
+  -- đơn đã giao từ bản cũ chưa có điểm (khách không đăng nhập trước đây): tính điểm bù
+  update orders set points_awarded = floor(total / rate)
+  where status = 'da_giao' and points_awarded = 0 and total > 0;
+
+  with ins as (
+    insert into members (phone, full_name, address)
+    select distinct on (norm_phone(phone)) norm_phone(phone), customer_name, address
+    from orders
+    where status = 'da_giao' and length(norm_phone(phone)) between 9 and 11
+    order by norm_phone(phone), delivered_at desc
+    on conflict (phone) do nothing
+    returning id)
+  select coalesce(array_agg(id), '{}') into new_ids from ins;
+
+  update orders o set member_id = m.id
+  from members m
+  where o.status = 'da_giao' and o.member_id is null and m.phone = norm_phone(o.phone);
+
+  -- chỉ với thành viên vừa dựng lần này (không đè lên việc nhân viên đã bỏ gắn): tự gắn tài khoản
+  -- khi mọi đơn của thành viên đều do đúng một tài khoản đặt
+  update members m set user_id = x.uid
+  from (select member_id, min(customer_id::text)::uuid as uid
+        from orders
+        where status = 'da_giao' and member_id is not null
+        group by member_id
+        having count(*) = count(customer_id) and count(distinct customer_id) = 1) x
+  where m.id = x.member_id and m.user_id is null and m.id = any(new_ids)
+    and not exists (select 1 from members z where z.user_id = x.uid);
+
+  update members m set points = s.p, total_spent = s.t, order_count = s.c,
+                       first_order_at = s.f, last_order_at = s.l
+  from (select member_id, sum(points_awarded)::int p, sum(total)::int t, count(*)::int c,
+               min(delivered_at) f, max(delivered_at) l
+        from orders where status = 'da_giao' and member_id is not null
+        group by member_id) s
+  where m.id = s.member_id;
+end $$;
+
+revoke execute on function public.rebuild_members() from anon, authenticated, public;
+select public.rebuild_members();

@@ -14,6 +14,8 @@
     <a class="logo" href="./"><img src="assets/logo.svg" alt="" width="40" height="40"><span>Cua Cô Thúy · Nội bộ</span></a>
     <nav id="nav" class="main-nav staff-nav hidden" aria-label="Menu nội bộ">
       <a href="#" data-tab="orders">Đơn hàng</a>
+      <a href="#" data-tab="delivered">Đã giao</a>
+      <a href="#" data-tab="members">Thành viên</a>
       <a href="#" data-tab="new">Tạo đơn hộ</a>
       <a href="#" data-tab="products">Sản phẩm</a>
       <a href="#" data-tab="admin" class="admin-only hidden">Nhân viên</a>
@@ -30,6 +32,7 @@
 
     <section id="tab-orders" class="tab hidden">
       <div class="stats" id="stats"></div>
+      <p class="muted tab-note">Đơn chuyển sang Đã giao sẽ nằm ở tab Đã giao và khách tự động thành thành viên.</p>
       <div class="row" style="margin-bottom:12px">
         <select id="fStatus" style="max-width:200px"><option value="">Tất cả trạng thái</option></select>
         <input id="fSearch" placeholder="Tìm tên, SĐT, địa chỉ, mã đơn" style="max-width:320px">
@@ -37,6 +40,29 @@
       <div class="table-wrap"><table>
         <thead><tr><th>Đơn</th><th>Khách hàng</th><th>Hàng</th><th>Ghi chú</th><th>Thanh toán</th><th>Trạng thái</th></tr></thead>
         <tbody id="orderRows"></tbody>
+      </table></div>
+    </section>
+
+    <section id="tab-delivered" class="tab hidden">
+      <div class="stats" id="deliveredStats"></div>
+      <div class="row" style="margin-bottom:12px">
+        <input id="fSearchDelivered" placeholder="Tìm tên, SĐT, địa chỉ, mã đơn" style="max-width:320px">
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Đơn</th><th>Khách hàng</th><th>Hàng</th><th>Điểm</th><th>Trạng thái</th></tr></thead>
+        <tbody id="deliveredRows"></tbody>
+      </table></div>
+    </section>
+
+    <section id="tab-members" class="tab hidden">
+      <p class="muted tab-note">Thành viên được tạo tự động theo số điện thoại khi đơn chuyển sang Đã giao. Gắn tài khoản để khách đăng nhập xem điểm và lịch sử mua hàng.</p>
+      <div class="stats" id="memberStats"></div>
+      <div class="row" style="margin-bottom:12px">
+        <input id="fSearchMembers" placeholder="Tìm tên hoặc số điện thoại" style="max-width:320px">
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Thành viên</th><th>Địa chỉ</th><th>Điểm</th><th>Đã mua</th><th>Gần nhất</th><th>Tài khoản</th><th>Thao tác</th></tr></thead>
+        <tbody id="memberRows"></tbody>
       </table></div>
     </section>
 
@@ -75,13 +101,13 @@
     import { sb, esc, money, when, toast, $, STATUS, PAYMENT_METHOD, PAYMENT_STATUS, currentProfile, loadProducts, renderAuth } from './js/common.js';
     import { renderOrderForm } from './js/order-form.js';
 
-    let me, orders = [];
+    let me, orders = [], delivered = [], members = [];
 
     $('#logout').onclick = async (e) => { e.preventDefault(); await sb.auth.signOut(); location.reload(); };
     document.querySelectorAll('[data-tab]').forEach((a) => a.onclick = (e) => { e.preventDefault(); show(a.dataset.tab); });
     function show(tab) {
       document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('hidden', t.id !== 'tab-' + tab));
-      ({ orders: loadOrders, new: renderNew, products: loadProductRows, admin: loadAdmin })[tab]?.();
+      ({ orders: loadOrders, delivered: loadDelivered, members: loadMembers, new: renderNew, products: loadProductRows, admin: loadAdmin })[tab]?.();
     }
 
     async function start() {
@@ -96,37 +122,61 @@
       }
       $('#nav').classList.remove('hidden');
       if (me.role === 'admin') document.querySelectorAll('.admin-only').forEach((x) => x.classList.remove('hidden'));
-      $('#fStatus').innerHTML += Object.entries(STATUS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
+      // Tab Đơn hàng chỉ có đơn chưa giao nên bộ lọc không có "Đã giao"
+      $('#fStatus').innerHTML += Object.entries(STATUS).filter(([k]) => k !== 'da_giao')
+        .map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
       $('#fStatus').onchange = renderOrders;
       $('#fSearch').oninput = renderOrders;
+      $('#fSearchDelivered').oninput = renderDelivered;
+      $('#fSearchMembers').oninput = renderMembers;
 
       // Realtime: đơn mới hoặc thay đổi từ thành viên khác hiện ngay
       sb.channel('orders').on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (p) => {
         if (p.eventType === 'INSERT') toast(`Có đơn mới #${p.new.id}`);
-        loadOrders();
+        loadOrders(); // tải lại cả đơn đang xử lý lẫn đơn đã giao (thống kê doanh thu cần)
       }).subscribe();
 
       show('orders');
     }
 
-    // ---------- Đơn hàng ----------
+    // ---------- Đơn hàng (chưa giao) ----------
+    const ORDER_SELECT = '*, order_items(*), creator:profiles!orders_created_by_fkey(full_name), editor:profiles!orders_updated_by_fkey(full_name)';
+
+    // Tải đơn đang xử lý và đơn đã giao (thống kê doanh thu hôm nay cần cả hai)
     async function loadOrders() {
-      const { data, error } = await sb.from('orders')
-        .select('*, order_items(*), creator:profiles!orders_created_by_fkey(full_name), editor:profiles!orders_updated_by_fkey(full_name)')
-        .order('created_at', { ascending: false }).limit(500);
+      await Promise.all([loadOpenOrders(), loadDelivered()]);
+    }
+
+    async function loadOpenOrders() {
+      const { data, error } = await sb.from('orders').select(ORDER_SELECT)
+        .neq('status', 'da_giao').order('created_at', { ascending: false }).limit(500);
       if (error) return toast(error.message, true);
       orders = data;
       renderOrders();
     }
 
-    function renderOrders() {
-      const today = new Date().toDateString();
+    async function loadDelivered() {
+      const { data, error } = await sb.from('orders')
+        .select(ORDER_SELECT + ', member:members(id, full_name, phone, points, order_count, user_id)')
+        .eq('status', 'da_giao').order('delivered_at', { ascending: false }).limit(300);
+      if (error) return toast(error.message, true);
+      delivered = data;
+      renderDelivered();
+      renderOrderStats();
+    }
+
+    const isToday = (t) => !!t && new Date(t).toDateString() === new Date().toDateString();
+    const revenueToday = () => delivered.filter((o) => isToday(o.delivered_at)).reduce((s, o) => s + o.total, 0);
+
+    function renderOrderStats() {
       const cnt = (s) => orders.filter((o) => o.status === s).length;
-      const revenue = orders.filter((o) => o.status === 'da_giao' && new Date(o.updated_at).toDateString() === today)
-        .reduce((s, o) => s + o.total, 0);
       $('#stats').innerHTML = [
-        ['Mới', cnt('moi')], ['Đã xác nhận', cnt('xac_nhan')], ['Đang giao', cnt('dang_giao')], ['Doanh thu hôm nay', money(revenue)],
+        ['Mới', cnt('moi')], ['Đã xác nhận', cnt('xac_nhan')], ['Đang giao', cnt('dang_giao')], ['Doanh thu hôm nay', money(revenueToday())],
       ].map(([k, v]) => `<div class="card"><span class="muted">${k}</span><b>${v}</b></div>`).join('');
+    }
+
+    function renderOrders() {
+      renderOrderStats();
 
       const st = $('#fStatus').value, q = $('#fSearch').value.trim().toLowerCase();
       const rows = orders.filter((o) => (!st || o.status === st) &&
@@ -159,9 +209,174 @@
         editOrder(orders.find((o) => o.id == b.dataset.edit)));
     }
 
+    // Đổi trạng thái đơn. Sang "Đã giao": trigger ở máy chủ tạo/cập nhật thành viên và cộng điểm,
+    // sau đó đọc lại đơn để báo kết quả.
     async function updateOrder(id, patch) {
       const { error } = await sb.from('orders').update(patch).eq('id', id);
-      error ? toast(error.message, true) : toast(`Đã cập nhật đơn #${id}`);
+      if (error) { toast(error.message, true); return loadOrders(); }
+      if (patch.status === 'da_giao') {
+        const { data } = await sb.from('orders')
+          .select('points_awarded, member:members(id, full_name, phone, points, order_count)').eq('id', id).maybeSingle();
+        toast(deliveredMessage(id, data));
+      } else {
+        toast(`Đã cập nhật đơn #${id}`);
+      }
+      loadOrders();
+    }
+
+    function deliveredMessage(id, data) {
+      const m = data?.member;
+      if (!m) return `Đơn #${id} đã giao`;
+      const name = m.full_name || m.phone;
+      const pts = Number(data.points_awarded || 0);
+      return m.order_count == 1
+        ? `Đơn #${id} đã giao · ${name} trở thành thành viên mới · +${pts} điểm`
+        : `Đơn #${id} đã giao · ${name} là thành viên · +${pts} điểm, tổng ${m.points} điểm`;
+    }
+
+    // ---------- Đã giao ----------
+    function renderDelivered() {
+      const q = $('#fSearchDelivered').value.trim().toLowerCase();
+      const rows = delivered.filter((o) => !q ||
+        [o.id, o.customer_name, o.phone, o.address, o.delivery_time].join(' ').toLowerCase().includes(q));
+      const totalPts = rows.reduce((s, o) => s + Number(o.points_awarded || 0), 0);
+      $('#deliveredStats').innerHTML = [
+        ['Đơn đã giao (đang hiển thị)', rows.length], ['Doanh thu hôm nay', money(revenueToday())], ['Tổng điểm đã tặng', totalPts],
+      ].map(([k, v]) => `<div class="card"><span class="muted">${k}</span><b>${v}</b></div>`).join('');
+
+      $('#deliveredRows').innerHTML = rows.map((o) => `
+        <tr>
+          <td><b>#${o.id}</b><br><span class="muted">Giao lúc ${o.delivered_at ? when(o.delivered_at) : '—'}</span><br>
+              <button type="button" class="btn small" data-edit="${o.id}">Sửa đơn</button></td>
+          <td><b>${esc(o.customer_name)}</b><br><a href="tel:${esc(o.phone)}">${esc(o.phone)}</a><br>${esc(o.address)}
+              ${o.delivery_time ? `<br><b>Giao: ${esc(o.delivery_time)}</b>` : ''}
+              ${o.member ? '<br><span class="badge">Thành viên</span>' : ''}</td>
+          <td>${(o.order_items || []).map((i) => `${esc(i.product_name)} × ${i.quantity} ${esc(i.unit)}`).join('<br>')}<br><b>${money(o.total)}</b></td>
+          <td><b class="pts">+${Number(o.points_awarded || 0)}</b>
+              ${o.member ? `<br><span class="muted">Điểm hiện tại: ${Number(o.member.points || 0)}</span>` : ''}</td>
+          <td><select data-dstatus="${o.id}">${Object.entries(STATUS).map(([k, v]) =>
+                `<option value="${k}" ${k === o.status ? 'selected' : ''}>${v}</option>`).join('')}</select>
+              ${o.editor ? `<div class="muted">Sửa bởi ${esc(o.editor.full_name || '')}<br>${when(o.updated_at)}</div>` : ''}</td>
+        </tr>`).join('') || '<tr><td colspan="5" class="muted">Chưa có đơn đã giao.</td></tr>';
+
+      $('#deliveredRows').querySelectorAll('[data-dstatus]').forEach((s) => s.onchange = () => {
+        const o = delivered.find((x) => x.id == s.dataset.dstatus);
+        const ok = confirm(`Chuyển đơn #${s.dataset.dstatus} sang "${STATUS[s.value]}"?\n` +
+          `Đơn sẽ quay lại tab Đơn hàng và ${Number(o?.points_awarded || 0)} điểm đã tặng sẽ được hoàn lại.`);
+        if (!ok) { s.value = 'da_giao'; return; }
+        updateOrder(s.dataset.dstatus, { status: s.value });
+      });
+      $('#deliveredRows').querySelectorAll('[data-edit]').forEach((b) => b.onclick = () =>
+        editOrder(delivered.find((o) => o.id == b.dataset.edit)));
+    }
+
+    // ---------- Thành viên ----------
+    async function loadMembers() {
+      const { data, error } = await sb.from('members').select('*')
+        .order('last_order_at', { ascending: false, nullsFirst: false }).limit(1000);
+      if (error) return toast(error.message, true);
+      members = data;
+      renderMembers();
+    }
+
+    function renderMembers() {
+      const q = $('#fSearchMembers').value.trim().toLowerCase();
+      const rows = members.filter((m) => !q || [m.full_name, m.phone].join(' ').toLowerCase().includes(q));
+      $('#memberStats').innerHTML = [
+        ['Tổng thành viên', members.length],
+        ['Tổng điểm', members.reduce((s, m) => s + Number(m.points || 0), 0)],
+        ['Đã gắn tài khoản', members.filter((m) => m.user_id).length],
+      ].map(([k, v]) => `<div class="card"><span class="muted">${k}</span><b>${v}</b></div>`).join('');
+
+      $('#memberRows').innerHTML = rows.map((m) => `
+        <tr>
+          <td><b>${esc(m.full_name || 'Chưa có tên')}</b><br><a href="tel:${esc(m.phone)}">${esc(m.phone)}</a>
+              ${m.note ? `<br><span class="muted">${esc(m.note)}</span>` : ''}</td>
+          <td>${m.address ? esc(m.address) : '<span class="muted">—</span>'}</td>
+          <td><b class="pts">${Number(m.points || 0)}</b></td>
+          <td>${Number(m.order_count || 0)} đơn<br><span class="muted">${money(m.total_spent)}</span></td>
+          <td>${m.last_order_at ? when(m.last_order_at) : '<span class="muted">—</span>'}</td>
+          <td>${m.user_id ? '<span class="badge ok">Đã gắn tài khoản</span>' : '<span class="badge off">Chưa gắn</span>'}</td>
+          <td><div class="member-actions">
+              <button type="button" class="btn small" data-medit="${m.id}">Sửa</button>
+              <button type="button" class="btn small" data-mlink="${m.id}">Gắn tài khoản</button>
+              <button type="button" class="btn small" data-morders="${m.id}">Xem đơn</button></div></td>
+        </tr>`).join('') || '<tr><td colspan="7" class="muted">Chưa có thành viên.</td></tr>';
+
+      const byId = (b, k) => members.find((m) => m.id == b.dataset[k]);
+      $('#memberRows').querySelectorAll('[data-medit]').forEach((b) => b.onclick = () => editMember(byId(b, 'medit')));
+      $('#memberRows').querySelectorAll('[data-mlink]').forEach((b) => b.onclick = () => linkMember(byId(b, 'mlink')));
+      $('#memberRows').querySelectorAll('[data-morders]').forEach((b) => b.onclick = () => {
+        const m = byId(b, 'morders');
+        if (!m) return;
+        $('#fSearchDelivered').value = m.phone;
+        show('delivered');
+      });
+    }
+
+    // Hộp thoại dùng chung cho thành viên (sửa / gắn tài khoản)
+    function memberDialog(html) {
+      let d = $('#memberDialog');
+      if (!d) {
+        d = document.createElement('dialog');
+        d.id = 'memberDialog';
+        d.className = 'login-dialog edit-dialog';
+        document.body.append(d);
+        d.addEventListener('click', (e) => { if (e.target === d) d.close(); });
+      }
+      d.innerHTML = `<button type="button" class="dlg-close" aria-label="Đóng">×</button>
+        <form class="dlg-body" id="memberForm">${html}</form>`;
+      $('.dlg-close', d).onclick = () => d.close();
+      d.showModal();
+      return d;
+    }
+
+    function editMember(m) {
+      if (!m) return;
+      const d = memberDialog(`
+        <h3>Sửa thành viên</h3>
+        <p class="muted">Số điện thoại: <b>${esc(m.phone)}</b> (không đổi được vì dùng để nhận diện khách)</p>
+        <label>Họ tên<input name="full_name" maxlength="100" value="${esc(m.full_name)}"></label>
+        <label>Địa chỉ<textarea name="address" maxlength="300">${esc(m.address)}</textarea></label>
+        <label>Ghi chú<textarea name="note" maxlength="500">${esc(m.note)}</textarea></label>
+        <div class="row" style="justify-content:flex-end"><button class="btn btn-red primary" type="submit">Lưu</button></div>`);
+      $('#memberForm', d).onsubmit = async (e) => {
+        e.preventDefault();
+        const f = Object.fromEntries(new FormData(e.target));
+        const btn = $('button[type=submit]', e.target);
+        btn.disabled = true;
+        const { error } = await sb.rpc('update_member', {
+          p_member: m.id, p_full_name: f.full_name, p_address: f.address, p_note: f.note,
+        });
+        btn.disabled = false;
+        if (error) return toast(error.message, true);
+        d.close();
+        toast('Đã cập nhật thành viên');
+        loadMembers();
+      };
+    }
+
+    function linkMember(m) {
+      if (!m) return;
+      const d = memberDialog(`
+        <h3>Gắn tài khoản</h3>
+        <p class="muted">Thành viên: <b>${esc(m.full_name || m.phone)}</b> · ${esc(m.phone)}<br>
+          ${m.user_id ? 'Đang gắn với một tài khoản khách.' : 'Chưa gắn tài khoản.'}</p>
+        <label>Email tài khoản khách đã đăng ký<input name="email" type="email" autocomplete="off" placeholder="khach@example.com"></label>
+        <p class="muted">Để trống rồi lưu = bỏ gắn tài khoản. Khi gắn, khách đăng nhập sẽ xem được điểm và lịch sử đơn.</p>
+        <div class="row" style="justify-content:flex-end"><button class="btn btn-red primary" type="submit">Lưu</button></div>`);
+      $('#memberForm', d).onsubmit = async (e) => {
+        e.preventDefault();
+        const email = new FormData(e.target).get('email').trim();
+        const btn = $('button[type=submit]', e.target);
+        btn.disabled = true;
+        const { error } = await sb.rpc('link_member', { p_member: m.id, p_email: email || null });
+        btn.disabled = false;
+        if (error) return toast(error.message, true);
+        d.close();
+        toast(email ? 'Đã gắn tài khoản' : 'Đã bỏ gắn tài khoản');
+        loadMembers();
+      };
     }
 
     // ---------- Sửa đơn đã tạo ----------

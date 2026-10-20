@@ -1,12 +1,17 @@
 // Stub tối giản cho @supabase/supabase-js dùng trong kiểm thử offline.
-function chain() {
-  const result = { data: [], error: null, count: 0 };
+// Chuỗi truy vấn giả: mọi bộ lọc/sắp xếp (select, eq, neq, order(..., { nullsFirst }), limit, in, is, ...)
+// trả lại chính chuỗi; await ra { data: [], error: null }; single()/maybeSingle() ra { data: null, error: null }.
+// Dùng cho cả bảng orders/products/settings/profiles và bảng members (thành viên): rỗng, không lỗi.
+function chain(table = '') {
+  const list = { data: [], error: null, count: 0 };
+  const one = { data: null, error: null };
   const handler = {
     get(target, prop) {
-      if (prop === 'then') return (res, rej) => Promise.resolve(result).then(res, rej);
-      if (prop === 'catch') return (fn) => Promise.resolve(result).catch(fn);
-      if (prop === 'finally') return (fn) => Promise.resolve(result).finally(fn);
-      if (prop === 'single' || prop === 'maybeSingle') return () => Promise.resolve({ data: null, error: null });
+      if (prop === 'then') return (res, rej) => Promise.resolve(list).then(res, rej);
+      if (prop === 'catch') return (fn) => Promise.resolve(list).catch(fn);
+      if (prop === 'finally') return (fn) => Promise.resolve(list).finally(fn);
+      if (prop === 'single' || prop === 'maybeSingle') return () => Promise.resolve(one);
+      // eq, neq, order, limit, select, insert, update, delete, in, is, or, range, ...
       return () => proxy;
     },
   };
@@ -26,8 +31,8 @@ export function createClient() {
       signUp: async () => ({ data: null, error: { message: 'stub' } }),
       signOut: async () => ({ error: null }),
     },
-    from: () => chain(),
-    rpc: () => chain(),
+    from: (table) => chain(table),
+    rpc: () => chain('rpc'),
     channel: () => channel,
     removeChannel: () => {},
     storage: { from: () => ({ upload: async () => ({ data: null, error: null }), getPublicUrl: () => ({ data: { publicUrl: '' } }) }) },

@@ -360,3 +360,12 @@ th{color:var(--muted);font-weight:600;background:var(--sky)}
 .pay-opt input{width:auto;margin-top:4px}
 .pay-opt:has(input:checked){border-color:var(--blue);background:var(--sky)}
 .pay-bank{padding:10px 12px;background:var(--sky);border-radius:12px;margin-top:4px}
+
+/* Quản lý: tab Đã giao + Thành viên */
+.tab-note{margin:0 0 12px;font-size:.9rem}
+.badge.ok{background:var(--ok)}
+.badge.off{background:#e8eef4;color:var(--muted);margin-left:0}
+.pts{color:var(--red);font-size:1.05rem}
+.member-actions{display:flex;flex-wrap:wrap;gap:6px}
+#tab-delivered table,#tab-members table{min-width:720px}
+#tab-members table{min-width:860px}

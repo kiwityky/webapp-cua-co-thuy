@@ -5,8 +5,8 @@ Một web gồm 3 khu, dùng chung một nguồn dữ liệu:
 | Trang | Ai dùng | Chức năng |
 |---|---|---|
 | `index.html` | Khách vãng lai | Quảng bá, bảng giá (lấy từ CSDL), nút Zalo/gọi điện |
-| `tai-khoan.html` | Khách thành viên | Đăng ký/đăng nhập, đặt hàng, xem đơn của mình, **tích điểm** |
-| `quan-ly.html` | Nhân viên công ty | Xem **tất cả** đơn (tên, SĐT, địa chỉ, số lượng, ghi chú), đổi trạng thái, sửa đơn, theo dõi thanh toán (COD / chuyển khoản, đã thu hay chưa), tạo đơn hộ khách gọi Zalo, sửa giá; admin cấp quyền nhân viên |
+| `tai-khoan.html` | Khách thành viên | Đăng ký/đăng nhập, đặt hàng, xem đơn của mình, xem **điểm thành viên** (sau khi nhân viên gắn tài khoản) |
+| `quan-ly.html` | Nhân viên công ty | Xem **tất cả** đơn (tên, SĐT, địa chỉ, số lượng, ghi chú), đổi trạng thái (đơn Đã giao sang tab riêng), quản lý **thành viên**, sửa đơn, theo dõi thanh toán (COD / chuyển khoản, đã thu hay chưa), tạo đơn hộ khách gọi Zalo, sửa giá; admin cấp quyền nhân viên |
 
 Công nghệ: HTML/CSS/JS thuần (ES module, không cần build) + **Supabase** (Postgres, Auth, Realtime).
 Hosting: **GitHub Pages** (miễn phí, tên miền `ten-ban.github.io`).
@@ -15,8 +15,17 @@ Hosting: **GitHub Pages** (miễn phí, tên miền `ten-ban.github.io`).
 - Khách: chỉ đọc được đơn của chính mình (Row Level Security).
 - Nhân viên/Admin: đọc và cập nhật mọi đơn; đơn mới hiện ngay nhờ Realtime.
 - Đơn chỉ tạo qua hàm `create_order`: giá luôn lấy từ bảng `products`, khách không sửa giá được.
-- Điểm: khi đơn chuyển sang **Đã giao**, khách được cộng `floor(tổng tiền / vnd_per_point)` điểm (mặc định 10.000đ = 1 điểm, admin đổi được). Đổi trạng thái ngược lại thì điểm bị trừ lại.
+- Điểm nằm ở bảng `members` (thành viên theo số điện thoại), không nằm ở tài khoản đăng nhập. Khách đăng nhập chỉ đọc được dòng thành viên đã gắn với tài khoản của mình; nhân viên/admin đọc được tất cả. Xem mục *Thành viên và tích điểm* bên dưới.
 - Đơn nhân viên đặt hộ tự gắn vào tài khoản khách nếu trùng số điện thoại.
+
+## Thành viên và tích điểm
+- Khi nhân viên chuyển đơn sang **Đã giao**, đơn tự chuyển sang tab **Đã giao**, khách được lưu thành **thành viên** theo số điện thoại (kèm tên, địa chỉ) và được cộng điểm tự động: `floor(tổng tiền / vnd_per_point)`, mặc định 10.000đ = 1 điểm.
+- Để khách đăng nhập xem được điểm và lịch sử đơn, nhân viên vào tab **Thành viên**, chọn thành viên rồi gắn tài khoản bằng **email** khách đã đăng ký. Khách đăng nhập `tai-khoan.html` sẽ thấy huy hiệu thành viên, điểm hiện có, số đơn, tổng tiền đã mua. Khách chưa được gắn tài khoản vẫn được tích điểm bình thường, chỉ là chưa tự xem được.
+- Đổi trạng thái đơn ngược lại (từ Đã giao về trạng thái khác) thì điểm, tổng tiền và số đơn tự hoàn lại; thông tin thành viên vẫn được giữ.
+- Đổi tỉ lệ điểm (số đồng cho 1 điểm) ở tab **Nhân viên** (chỉ admin). Tỉ lệ mới áp dụng cho các đơn giao sau đó.
+
+## Cập nhật từ bản cũ
+Nếu đã chạy bản cũ (điểm lưu trong tài khoản khách), cần chạy lại **toàn bộ** `supabase/schema.sql` trong SQL Editor. Chạy lại an toàn, không mất đơn hay sản phẩm: file tự tạo thành viên từ các đơn đã giao trước đó và tính lại điểm cho từng thành viên. Cột điểm cũ trong `profiles` bị bỏ. Sau đó, vào tab **Thành viên** gắn email cho những khách đã có tài khoản để họ thấy lại điểm.
 
 ## 1. Tạo Supabase (miễn phí)
 1. Vào https://supabase.com → New project (chọn region Singapore).
