@@ -111,6 +111,21 @@ export function initNav() {
   document.addEventListener('click', (e) => {
     if (nav.classList.contains('open') && !nav.contains(e.target) && !btn.contains(e.target)) set(false);
   });
+
+  // Màn rộng nhưng menu dài hơn chỗ chứa (đã đăng nhập thêm vài mục) → gọn thành nút ☰ thay vì tràn
+  const header = nav.closest('.site-header');
+  const row = nav.parentElement;
+  if (!header || !row) return;
+  const fit = () => {
+    header.classList.remove('nav-compact');
+    if (matchMedia('(min-width:961px)').matches && row.scrollWidth > row.clientWidth + 1) {
+      header.classList.add('nav-compact');
+    }
+  };
+  window.addEventListener('resize', fit);
+  window.addEventListener('nav:changed', fit);
+  document.fonts?.ready.then(fit);
+  fit();
 }
 
 // Gán link Zalo / điện thoại từ SHOP cho các phần tử có sẵn trong trang
@@ -195,8 +210,9 @@ export async function initAccountNav({ login = true } = {}) {
     slot.innerHTML =
       (staff ? '<a href="quan-ly.html" class="staff-link">Quản lý đơn</a>' : '') +
       (login ? (me
-        ? `<a href="#" data-acct="logout">Đăng xuất${me.full_name ? ' (' + esc(me.full_name) + ')' : ''}</a>`
+        ? `<a href="#" data-acct="logout"${me.full_name ? ' title="Đang đăng nhập: ' + esc(me.full_name) + '"' : ''}>Đăng xuất</a>`
         : '<a href="#" data-acct="login">Đăng nhập</a>') : '');
+    window.dispatchEvent(new Event('nav:changed'));
   };
   const refresh = async () => {
     let me = null;

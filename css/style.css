@@ -369,3 +369,16 @@ th{color:var(--muted);font-weight:600;background:var(--sky)}
 .member-actions{display:flex;flex-wrap:wrap;gap:6px}
 #tab-delivered table,#tab-members table{min-width:720px}
 #tab-members table{min-width:860px}
+
+/* Menu quá dài so với bề ngang (vd. đã đăng nhập: thêm "Quản lý đơn" + "Đăng xuất") → js/common.js (fitNav) gắn .nav-compact để gọn thành nút ☰ */
+@media (min-width:961px){
+  .site-header.nav-compact #mainNav{display:none;position:absolute;top:100%;left:0;right:0;flex-direction:column;align-items:stretch;gap:2px;margin:0;padding:8px 16px 16px;background:var(--navy);border-top:1px solid rgba(255,255,255,.1);box-shadow:0 12px 24px rgba(5,22,38,.3)}
+  .site-header.nav-compact #mainNav.open{display:flex;animation:fadeIn .2s var(--ease)}
+  .site-header.nav-compact #mainNav a{padding:12px 14px;border-radius:10px;font-size:1rem}
+  .site-header.nav-compact #mainNav .tag-dev{display:inline-block}
+  .site-header.nav-compact .nav-toggle{display:inline-flex;order:3;margin-left:0}
+  .site-header.nav-compact .cart-btn{order:2}
+  .site-header.nav-compact .logo{margin-right:auto}
+}
+/* Thanh menu được rộng hơn phần nội dung để vừa đủ các mục trên màn lớn */
+.nav-row .wrap{max-width:1440px}
