@@ -70,8 +70,9 @@
 
     <section id="tab-products" class="tab hidden">
       <h2>Sản phẩm &amp; giá</h2>
+      <p class="muted">Nhập <b>giá vốn</b> (giá mua vào). Giá bán = giá vốn × (1 + % lãi), làm tròn lên bội số 10.000đ, và tự cập nhật lên bảng giá trang chủ khi bấm Lưu.</p>
       <div class="table-wrap"><table>
-        <thead><tr><th>Tên</th><th>Mô tả</th><th>Giá (đ)</th><th>Nhãn</th><th>Thứ tự</th><th>Đang bán</th><th></th></tr></thead>
+        <thead><tr><th>Tên</th><th>Mô tả</th><th>Giá vốn (đ)</th><th>% lãi</th><th>Giá bán</th><th>Nhãn</th><th>Thứ tự</th><th>Đang bán</th><th></th></tr></thead>
         <tbody id="productRows"></tbody>
       </table></div>
       <button class="btn small" id="addProduct" style="margin-top:10px">+ Thêm sản phẩm</button>
@@ -99,6 +100,7 @@
 
   <script type="module">
     import { sb, esc, money, when, toast, $, STATUS, PAYMENT_METHOD, PAYMENT_STATUS, currentProfile, loadProducts, renderAuth } from './js/common.js';
+    import { calcSellPrice } from './js/pricing.js';
     import { renderOrderForm } from './js/order-form.js';
 
     let me, orders = [], delivered = [], members = [];
@@ -423,19 +425,23 @@
       const recalc = () => {
         let s = 0;
         lines.querySelectorAll('.item-line').forEach((l) =>
-          s += priceOf($('select', l).value) * (parseFloat($('input', l).value) || 0));
+          s += (Number($('[name=unit_price]', l).value) || 0) * (parseFloat($('[name=qty]', l).value) || 0));
         $('#editSum', d).textContent = money(Math.round(s));
       };
       const addLine = (item) => {
         const l = document.createElement('div');
-        l.className = 'item-line';
+        l.className = 'item-line has-price';
         l.innerHTML = `<label>Loại cua<select>${opts}</select></label>
-          <label>Số kg<input type="number" min="0.1" step="0.1" max="100" value="1"></label>
+          <label>Số kg<input name="qty" type="number" min="0.1" step="0.1" max="100" value="1"></label>
+          <label>Giá bán (đ/kg)<input name="unit_price" type="number" min="0" step="1000" required></label>
           <button type="button" class="btn small" title="Xóa" aria-label="Xóa dòng">×</button>`;
+        const sel = $('select', l), price = $('[name=unit_price]', l);
         if (item) {
-          $('select', l).value = String(item.product_id);
-          $('input', l).value = String(parseFloat(item.quantity));
-        }
+          sel.value = String(item.product_id);
+          $('[name=qty]', l).value = String(parseFloat(item.quantity));
+          price.value = String(item.unit_price);
+        } else price.value = String(priceOf(sel.value));
+        sel.onchange = () => { price.value = String(priceOf(sel.value)); recalc(); };
         $('button', l).onclick = () => { l.remove(); recalc(); };
         l.oninput = recalc;
         lines.append(l);
@@ -451,7 +457,8 @@
         e.preventDefault();
         const f = Object.fromEntries(new FormData(e.target));
         const items = [...lines.querySelectorAll('.item-line')].map((l) => ({
-          product_id: Number($('select', l).value), quantity: parseFloat($('input', l).value),
+          product_id: Number($('select', l).value), quantity: parseFloat($('[name=qty]', l).value),
+          unit_price: Math.round(Number($('[name=unit_price]', l).value) || 0),
         })).filter((i) => i.quantity > 0);
         if (!items.length) return toast('Chưa chọn sản phẩm', true);
         const btn = $('button[type=submit]', e.target);
@@ -478,30 +485,53 @@
 
     // ---------- Sản phẩm ----------
     async function loadProductRows() {
-      const { data, error } = await sb.from('products').select('*').order('sort');
-      if (error) return toast(error.message, true);
-      $('#productRows').innerHTML = data.map(productRow).join('');
+      const [{ data, error }, { data: costs, error: e2 }] = await Promise.all([
+        sb.from('products').select('*').order('sort'),
+        sb.from('product_costs').select('*'),
+      ]);
+      if (error || e2) return toast((error || e2).message, true);
+      const byPid = Object.fromEntries((costs || []).map((c) => [c.product_id, c]));
+      $('#productRows').innerHTML = data.map((p) => productRow(p, byPid[p.id])).join('');
       bindProductRows();
     }
-    const productRow = (p) => `
+    const productRow = (p, c) => `
       <tr data-id="${p.id ?? ''}">
         <td><input name="name" value="${esc(p.name)}"></td>
         <td><input name="description" value="${esc(p.description)}"></td>
-        <td><input name="price" type="number" min="0" step="1000" value="${p.price ?? 0}"></td>
+        <td><input name="cost" type="number" min="0" step="1000" value="${c?.cost ?? ''}" placeholder="Giá mua vào" style="min-width:110px"></td>
+        <td><input name="markup_pct" type="number" min="0" max="500" step="0.5" value="${c?.markup_pct != null ? Number(c.markup_pct) : 15}" style="width:76px"></td>
+        <td class="sell-price" style="white-space:nowrap"><b>${p.price != null ? money(p.price) : '–'}</b></td>
         <td><input name="badge" value="${esc(p.badge)}"></td>
         <td><input name="sort" type="number" value="${p.sort ?? 0}" style="width:70px"></td>
         <td><input name="active" type="checkbox" ${p.active !== false ? 'checked' : ''} style="width:auto"></td>
         <td><button class="btn small">Lưu</button></td>
       </tr>`;
     function bindProductRows() {
-      $('#productRows').querySelectorAll('tr').forEach((tr) => $('button', tr).onclick = async () => {
+      $('#productRows').querySelectorAll('tr').forEach((tr) => {
         const v = (n) => $(`[name=${n}]`, tr);
-        const row = { name: v('name').value.trim(), description: v('description').value, price: Number(v('price').value),
-          badge: v('badge').value || null, sort: Number(v('sort').value), active: v('active').checked };
-        if (!row.name) return toast('Thiếu tên', true);
-        const q = tr.dataset.id ? sb.from('products').update(row).eq('id', tr.dataset.id) : sb.from('products').insert(row);
-        const { error } = await q;
-        error ? toast(error.message, true) : (toast('Đã lưu'), loadProductRows());
+        const preview = () => {
+          if (v('cost').value === '') return;
+          $('.sell-price', tr).innerHTML = `<b>${money(calcSellPrice(v('cost').value, v('markup_pct').value))}</b>`;
+        };
+        v('cost').oninput = v('markup_pct').oninput = preview;
+        $('button', tr).onclick = async () => {
+          const row = { name: v('name').value.trim(), description: v('description').value,
+            badge: v('badge').value || null, sort: Number(v('sort').value), active: v('active').checked };
+          const cost = v('cost').value === '' ? null : Number(v('cost').value);
+          const markup = Number(v('markup_pct').value);
+          if (!row.name) return toast('Thiếu tên', true);
+          if (cost === null || !(cost >= 0)) return toast('Nhập giá vốn', true);
+          if (!(markup >= 0 && markup <= 500)) return toast('% lãi không hợp lệ', true);
+          let id = tr.dataset.id;
+          const q = id ? sb.from('products').update(row).eq('id', id)
+            : sb.from('products').insert({ ...row, price: 0 }).select('id').single();
+          const { data, error } = await q;
+          if (error) return toast(error.message, true);
+          if (!id) { id = data.id; tr.dataset.id = id; }
+          const { error: e2 } = await sb.from('product_costs')
+            .upsert({ product_id: Number(id), cost, markup_pct: markup }, { onConflict: 'product_id' });
+          e2 ? toast(e2.message, true) : (toast('Đã lưu, giá bán đã cập nhật'), loadProductRows());
+        };
       });
     }
     $('#addProduct').onclick = () => {

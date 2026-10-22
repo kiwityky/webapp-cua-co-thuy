@@ -24,6 +24,14 @@ Hosting: **GitHub Pages** (miễn phí, tên miền `ten-ban.github.io`).
 - Đổi trạng thái đơn ngược lại (từ Đã giao về trạng thái khác) thì điểm, tổng tiền và số đơn tự hoàn lại; thông tin thành viên vẫn được giữ.
 - Đổi tỉ lệ điểm (số đồng cho 1 điểm) ở tab **Nhân viên** (chỉ admin). Tỉ lệ mới áp dụng cho các đơn giao sau đó.
 
+## Giá bán (giá vốn + % lãi)
+- Nhân viên nhập **giá vốn** (giá mua vào) và **% lãi** ở tab **Sản phẩm**. Giá bán = giá vốn × (1 + % lãi), **làm tròn lên** bội số 10.000đ. CSDL tự tính (hàm `calc_sell_price`) và lưu vào `products.price`.
+- % lãi mặc định: Cua don 15%, Cua tứ 16%, Y3 17%, Y5 18%, Y7 19%, Cua gạch 20%.
+- Giá vốn lưu ở bảng `product_costs`, chỉ nhân viên xem được. Khách chỉ thấy giá bán.
+- Bảng giá trang chủ, thẻ sản phẩm và đơn mới đều dùng giá bán này. Bảng giá ghi "Giá áp dụng từ" theo lần đổi giá gần nhất.
+- Khi **Sửa đơn**, nhân viên sửa được giá bán (đ/kg) của từng dòng cho khớp thực tế.
+- Lần đầu chạy, giá vốn được suy ngược từ giá bán cũ (để giá không đổi). Nhân viên nhập lại giá vốn thật rồi bấm Lưu.
+
 ## Cập nhật từ bản cũ
 Nếu đã chạy bản cũ (điểm lưu trong tài khoản khách), cần chạy lại **toàn bộ** `supabase/schema.sql` trong SQL Editor. Chạy lại an toàn, không mất đơn hay sản phẩm: file tự tạo thành viên từ các đơn đã giao trước đó và tính lại điểm cho từng thành viên. Cột điểm cũ trong `profiles` bị bỏ. Sau đó, vào tab **Thành viên** gắn email cho những khách đã có tài khoản để họ thấy lại điểm.
 
@@ -73,8 +81,9 @@ quan-ly.html        khu nhân viên
 js/config.js        URL + anon key Supabase, thông tin shop, tài khoản ngân hàng (SHOP.bank) hiện khi khách chọn chuyển khoản
 js/common.js        kết nối Supabase, đăng nhập, tiện ích
 js/order-form.js    form đặt hàng dùng chung
+js/pricing.js       công thức giá bán (xem trước ở trang quản lý)
+js/price-board.js   bảng giá HTML trên trang chủ
 css/style.css
-assets/bang-gia.png
 supabase/schema.sql bảng, hàm, RLS, dữ liệu giá ban đầu
 ```
 
@@ -87,4 +96,5 @@ python tools\build-images.py ..\images\161026
 Chi tiết (đặt tên ảnh, gắn ảnh cho từng sản phẩm trong `js/images.js`): xem `tools/IMAGES.md`.
 
 ## Kiểm thử giao diện
+`node tools/test/bang-gia.mjs` kiểm thử bảng giá, tab Sản phẩm và sửa giá trong đơn.
 `node tools/test/responsive.mjs` chụp 3 trang ở 5 kích thước màn hình và kiểm tra cuộn ngang, ảnh lỗi, nút bấm (cần Playwright + Chromium).

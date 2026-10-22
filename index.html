@@ -176,13 +176,14 @@
       </div>
     </section>
 
-    <section id="bang-gia-anh" class="section section-sky">
+    <section id="bang-gia" class="section section-sky">
       <div class="wrap">
         <div class="section-head">
           <p class="kicker">Bảng giá</p>
-          <h2>Bảng giá tham khảo</h2>
+          <h2>Giá cua hôm nay</h2>
+          <p class="muted">Cập nhật theo giá cửa hàng, tính theo kg.</p>
         </div>
-        <picture><source type="image/webp" srcset="assets/img/bang-gia-520.webp 520w, assets/img/bang-gia-1040.webp 1040w" sizes="(max-width:600px) 100vw, 520px"><img class="pricelist" src="assets/bang-gia.png" width="1080" height="1920" alt="Bảng giá Cua Cô Thúy" loading="lazy" decoding="async"></picture>
+        <div id="priceBoard" class="price-board" aria-live="polite" aria-busy="true"></div>
       </div>
     </section>
   </main>

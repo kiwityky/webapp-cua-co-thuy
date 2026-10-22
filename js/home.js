@@ -2,6 +2,8 @@
 // Mọi thao tác DOM đều kiểm tra phần tử tồn tại.
 import { esc, money, toast, loadProducts, initNav, applyShopLinks, initAccountNav } from './common.js';
 import * as cart from './cart.js';
+import { renderPriceBoard } from './price-board.js';
+import { sellPrice } from './pricing.js';
 
 // images.js do Tác vụ 2 tạo; nếu thiếu, trang vẫn chạy (không ảnh)
 let IMG = { IMAGES: {}, PRODUCT_IMAGES: {}, GALLERY: [], picture: () => '', imgUrl: () => '' };
@@ -39,7 +41,7 @@ function productCard(p) {
         <h3>${esc(p.name)}</h3>
         <p class="desc">${esc(p.description)}</p>
         <div class="price-row">
-          <span class="price">${esc(money(p.price))}</span><small class="unit">/${esc(p.unit || 'kg')}</small>
+          <span class="price">${esc(money(sellPrice(p)))}</span><small class="unit">/${esc(p.unit || 'kg')}</small>
         </div>
         <button type="button" class="btn btn-red add-cart" data-id="${esc(p.id)}"
           aria-label="Thêm 1 ${esc(p.unit || 'kg')} ${esc(p.name)} vào giỏ">Thêm vào giỏ</button>
@@ -59,8 +61,9 @@ async function initProducts() {
   }
   grid.innerHTML = products.length
     ? products.map(productCard).join('')
-    : '<p class="muted">Xem bảng giá trong ảnh bên dưới hoặc nhắn Zalo.</p>';
+    : '<p class="muted">Xem bảng giá bên dưới hoặc nhắn Zalo.</p>';
   grid.removeAttribute('aria-busy');
+  try { renderPriceBoard(byId('priceBoard'), products); } catch (err) { console.error(err); }
 
   const note = byId('priceNote');
   if (note && !note.textContent.trim()) {

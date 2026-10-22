@@ -275,9 +275,10 @@ begin
 end $$;
 
 -- Nhân viên sửa đơn đã tạo: thông tin khách + danh sách hàng.
--- Dòng hàng giữ nguyên đơn giá cũ nếu cùng sản phẩm; sản phẩm mới thêm vào lấy giá hiện tại.
+-- Đơn giá: lấy "unit_price" nhân viên nhập nếu có; không có thì giữ đơn giá cũ nếu cùng sản phẩm,
+-- sản phẩm mới thêm vào lấy giá bán hiện tại.
 -- Đơn đã giao: điểm và tổng tiền của thành viên được cộng/trừ phần chênh lệch cho khớp tổng tiền mới.
--- p_items: [{"product_id": 1, "quantity": 1.5}, ...]
+-- p_items: [{"product_id": 1, "quantity": 1.5, "unit_price": 250000}, ...]  (unit_price tùy chọn)
 drop function if exists public.update_order(bigint,text,text,text,text,jsonb);
 drop function if exists public.update_order(bigint,text,text,text,text,jsonb,text);
 create or replace function public.update_order(
@@ -325,9 +326,14 @@ begin
     if not found then raise exception 'Sản phẩm không tồn tại'; end if;
     q := (it->>'quantity')::numeric;
     if q is null or q <= 0 or q > 100 then raise exception 'Số lượng không hợp lệ'; end if;
-    select unit_price into v_price from order_items
-      where order_id = p_order and product_id = pr.id and id <= v_max order by id limit 1;
-    v_price := coalesce(v_price, pr.price);
+    if nullif(it->>'unit_price','') is not null then
+      v_price := round((it->>'unit_price')::numeric);
+      if v_price < 0 or v_price > 100000000 then raise exception 'Đơn giá không hợp lệ'; end if;
+    else
+      select unit_price into v_price from order_items
+        where order_id = p_order and product_id = pr.id and id <= v_max order by id limit 1;
+      v_price := coalesce(v_price, pr.price);
+    end if;
     insert into order_items (order_id, product_id, product_name, unit_price, quantity, unit)
     values (p_order, pr.id, pr.name, v_price, q, pr.unit);
     v_total := v_total + round(v_price * q);
@@ -503,6 +509,70 @@ do $$ begin
   alter publication supabase_realtime add table public.orders;
 exception when duplicate_object then null; end $$;
 
+-- ---------- Giá vốn + công thức giá bán ----------
+-- Nhân viên nhập giá vốn (giá mua vào) và % lãi từng loại; products.price (giá bán) do trigger tính:
+--   giá bán = giá vốn × (1 + % lãi), làm tròn LÊN bội số 10.000đ.
+-- Bảng product_costs chỉ nhân viên đọc được (khách không thấy giá vốn).
+alter table public.products add column if not exists price_updated_at timestamptz not null default now();
+
+create table if not exists public.product_costs (
+  product_id  bigint primary key references public.products(id) on delete cascade,
+  cost        integer not null default 0 check (cost >= 0),                       -- giá vốn, VND / đơn vị
+  markup_pct  numeric(5,2) not null default 15 check (markup_pct between 0 and 500), -- % lãi
+  updated_at  timestamptz not null default now()
+);
+
+create or replace function public.calc_sell_price(p_cost integer, p_pct numeric) returns integer
+language sql immutable as $$
+  select (ceil(p_cost::numeric * (100 + p_pct) / 100 / 10000) * 10000)::integer;
+$$;
+
+-- Sản phẩm có giá vốn: giá bán luôn theo công thức. Đổi giá thì ghi lại thời điểm.
+create or replace function public.products_price_guard() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare c product_costs%rowtype;
+begin
+  select * into c from product_costs where product_id = new.id;
+  if found then new.price := calc_sell_price(c.cost, c.markup_pct); end if;
+  if tg_op = 'INSERT' or new.price is distinct from old.price then
+    new.price_updated_at := now();
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists products_price_guard on public.products;
+create trigger products_price_guard before insert or update on public.products
+  for each row execute function public.products_price_guard();
+
+create or replace function public.product_costs_touch() returns trigger
+language plpgsql as $$
+begin
+  new.updated_at := now();
+  return new;
+end $$;
+
+drop trigger if exists product_costs_touch on public.product_costs;
+create trigger product_costs_touch before insert or update on public.product_costs
+  for each row execute function public.product_costs_touch();
+
+-- Chạy SAU khi lưu giá vốn để products_price_guard đọc được giá vốn mới
+create or replace function public.product_costs_apply() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  update products set price = calc_sell_price(new.cost, new.markup_pct)
+  where id = new.product_id and price is distinct from calc_sell_price(new.cost, new.markup_pct);
+  return null;
+end $$;
+
+drop trigger if exists product_costs_apply on public.product_costs;
+create trigger product_costs_apply after insert or update on public.product_costs
+  for each row execute function public.product_costs_apply();
+
+alter table public.product_costs enable row level security;
+drop policy if exists p_product_costs_all on public.product_costs;
+create policy p_product_costs_all on public.product_costs for all
+  using (is_staff()) with check (is_staff());
+
 -- ---------- Sửa chính tả "Cua dơn" -> "Cua don" (DB đã seed từ bản cũ) ----------
 update public.products    set name = 'Cua don'      where name = 'Cua dơn';
 update public.order_items set product_name = 'Cua don' where product_name = 'Cua dơn';
@@ -522,6 +592,16 @@ select * from (values
   ('Cua gạch', '3–4 con/kg · gạch son đỏ', 600000, 'Đặc biệt', 6)
 ) v(name, description, price, badge, sort)
 where not exists (select 1 from public.products);
+
+-- Giá vốn ban đầu: suy ngược từ giá bán hiện tại (nhân viên sửa lại theo giá mua thật).
+-- % lãi: Cua don 15, Cua tứ 16, Y3 17, Y5 18, Y7 19, Cua gạch 20.
+insert into public.product_costs (product_id, cost, markup_pct)
+select p.id, (floor(p.price::numeric * 100 / (100 + m.pct) / 1000) * 1000)::integer, m.pct
+from public.products p
+cross join lateral (select case lower(p.name)
+  when 'cua don' then 15 when 'cua tứ' then 16 when 'cua y3' then 17
+  when 'cua y5' then 18 when 'cua y7' then 19 when 'cua gạch' then 20 else 15 end::numeric as pct) m
+on conflict (product_id) do nothing;
 
 -- ---------- Cập nhật từ bản cũ: dựng thành viên từ các đơn đã giao trước đây ----------
 -- Chạy lại nhiều lần vẫn an toàn: điểm/tổng tiền/số đơn luôn tính lại từ các đơn đã giao.

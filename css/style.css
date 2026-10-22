@@ -355,6 +355,8 @@ th{color:var(--muted);font-weight:600;background:var(--sky)}
 .login-dialog .dlg-close{position:absolute;top:6px;right:6px;width:40px;height:40px;border:0;border-radius:50%;background:var(--sky);color:var(--navy);font-size:1.5rem;line-height:1;cursor:pointer}
 .edit-dialog{width:min(640px,calc(100vw - 32px))}
 .edit-dialog .item-line{margin-bottom:8px}
+.item-line.has-price{grid-template-columns:1fr 90px 130px 36px}
+@media (max-width:600px){.item-line.has-price{grid-template-columns:1fr 1fr 36px}.item-line.has-price label:first-child{grid-column:1/-1}}
 .pay-dialog{width:min(420px,calc(100vw - 32px))}
 .pay-opt{display:flex;gap:12px;align-items:flex-start;padding:12px;border:1px solid #cfe0ee;border-radius:12px;margin:8px 0;cursor:pointer}
 .pay-opt input{width:auto;margin-top:4px}
@@ -382,3 +384,44 @@ th{color:var(--muted);font-weight:600;background:var(--sky)}
 }
 /* Thanh menu được rộng hơn phần nội dung để vừa đủ các mục trên màn lớn */
 .nav-row .wrap{max-width:1440px}
+
+/* ---------- Bảng giá HTML (thay ảnh bảng giá) ---------- */
+.price-board{position:relative;max-width:620px;margin:0 auto;background:#fffdf9;border-radius:22px;overflow:hidden;box-shadow:var(--shadow);border:1px solid #efe3d3}
+.price-board::before{content:"";position:absolute;inset:10px;border:1px solid rgba(198,40,40,.18);border-radius:16px;pointer-events:none;z-index:1}
+.pb-head{position:relative;text-align:center;padding:34px 24px 26px;background:linear-gradient(160deg,var(--navy) 0%,#123f68 60%,var(--blue) 130%);color:#fff;overflow:hidden}
+.pb-head::after{content:"";position:absolute;right:-30px;top:-30px;width:170px;height:170px;background:url(../assets/logo.svg) center/contain no-repeat;opacity:.09;transform:rotate(-12deg)}
+.pb-kicker{margin:0 0 6px;color:#ffcdc9;font-size:.76rem;font-weight:700;letter-spacing:.2em;text-transform:uppercase}
+.pb-heading{color:#fff;font-size:clamp(1.8rem,5.4vw,2.5rem);margin:0 0 .15em;line-height:1.15}
+.pb-heading em{color:#ff8a80;font-style:italic}
+.pb-sub{margin:0;color:#c9dbeb;font-size:.92rem}
+.pb-sub::before,.pb-sub::after{content:"✦";color:#ff8a80;font-size:.7em;margin:0 10px;vertical-align:middle}
+.pb-list{list-style:none;margin:0;padding:18px 26px 8px}
+.pb-row{display:flex;align-items:flex-end;gap:10px;padding:14px 4px;border-bottom:1px dashed #e6d9c8}
+.pb-row:last-child{border-bottom:0}
+.pb-hot{margin:8px -10px 4px;padding:14px 14px;background:var(--red-soft);border:1px solid #f6c9c4;border-radius:14px}
+.pb-name{display:flex;flex-direction:column;min-width:0}
+.pb-title{font-variant-numeric:lining-nums;font-family:"Playfair Display",Georgia,serif;font-weight:700;font-size:1.3rem;color:var(--navy);line-height:1.2}
+.pb-badge{display:inline-block;margin-left:6px;padding:1px 9px;border-radius:999px;background:var(--red);color:#fff;font-family:"Be Vietnam Pro",system-ui,sans-serif;font-size:.66rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;vertical-align:middle}
+.pb-desc{color:var(--muted);font-size:.88rem;line-height:1.4;margin-top:2px}
+.pb-dots{flex:1;min-width:16px;border-bottom:2px dotted #d8c7b2;margin-bottom:.55em}
+.pb-price{flex:none;font-variant-numeric:lining-nums tabular-nums;font-family:"Playfair Display",Georgia,serif;font-weight:700;font-size:1.45rem;color:var(--red);white-space:nowrap;line-height:1.2}
+.pb-price small{font-family:"Be Vietnam Pro",system-ui,sans-serif;font-weight:500;font-size:.8rem;color:var(--muted);margin-left:2px}
+.pb-empty{text-align:center;color:var(--muted);padding:28px 24px;margin:0}
+.pb-foot{text-align:center;padding:22px 24px 28px;background:var(--navy);color:#c9dbeb}
+.pb-perks{list-style:none;margin:0 0 16px;padding:0 0 16px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;border-bottom:1px solid rgba(255,255,255,.12);font-size:.82rem;line-height:1.35}
+.pb-perks b{display:block;font-family:"Playfair Display",Georgia,serif;color:#ffcdc9;font-size:.98rem;margin-bottom:2px}
+.pb-call{margin:0;font-size:.74rem;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:#ff8a80}
+.pb-phone{display:inline-block;font-variant-numeric:lining-nums;font-family:"Playfair Display",Georgia,serif;font-weight:700;font-size:clamp(1.8rem,6vw,2.4rem);color:#fff;text-decoration:none;letter-spacing:.04em;line-height:1.3}
+.pb-phone:hover{color:#ffcdc9}
+.pb-date{margin:4px 0 0;font-size:.8rem;color:#9fb6cc}
+.price-board[aria-busy="true"] .pb-list{min-height:320px}
+@media (max-width:520px){
+  .pb-list{padding:12px 16px 4px}
+  .pb-dots{display:none}
+  .pb-row{justify-content:space-between}
+  .pb-title{font-size:1.12rem}
+  .pb-price{font-size:1.2rem}
+  .pb-hot{margin:6px -6px 4px;padding:12px 10px}
+  .pb-perks{grid-template-columns:1fr;gap:8px}
+  .pb-sub::before,.pb-sub::after{display:none}
+}
