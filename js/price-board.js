@@ -38,6 +38,7 @@ export function renderPriceBoard(el, products = []) {
         <li><b>Freeship đơn đầu</b>Sau đó tính theo GreenSM</li>
         <li><b>Bao đổi trả</b>Cua chết, rụng càng</li>
       </ul>
+      <p class="pb-bulk">Khách có nhu cầu mua <b>số lượng lớn (≥&nbsp;10kg)</b> vui lòng inbox để lấy giá tốt.</p>
       <p class="pb-call">Đặt hàng qua Zalo / điện thoại</p>
       <a class="pb-phone" href="tel:${esc(SHOP.phone)}">${esc(SHOP.phoneDisplay)}</a>
       <p class="pb-date">Giá áp dụng từ ${since} · có thể thay đổi theo con nước</p>

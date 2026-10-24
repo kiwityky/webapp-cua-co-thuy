@@ -410,6 +410,8 @@ th{color:var(--muted);font-weight:600;background:var(--sky)}
 .pb-foot{text-align:center;padding:22px 24px 28px;background:var(--navy);color:#c9dbeb}
 .pb-perks{list-style:none;margin:0 0 16px;padding:0 0 16px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;border-bottom:1px solid rgba(255,255,255,.12);font-size:.82rem;line-height:1.35}
 .pb-perks b{display:block;font-family:"Playfair Display",Georgia,serif;color:#ffcdc9;font-size:.98rem;margin-bottom:2px}
+.pb-bulk{margin:0 auto 16px;max-width:460px;padding:10px 14px;border:1px dashed rgba(255,205,201,.55);border-radius:12px;background:rgba(255,255,255,.06);color:#fff;font-size:.92rem;line-height:1.45}
+.pb-bulk b{color:#ffcdc9;white-space:nowrap}
 .pb-call{margin:0;font-size:.74rem;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:#ff8a80}
 .pb-phone{display:inline-block;font-variant-numeric:lining-nums;font-family:"Playfair Display",Georgia,serif;font-weight:700;font-size:clamp(1.8rem,6vw,2.4rem);color:#fff;text-decoration:none;letter-spacing:.04em;line-height:1.3}
 .pb-phone:hover{color:#ffcdc9}
