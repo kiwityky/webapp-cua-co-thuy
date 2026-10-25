@@ -9,7 +9,7 @@ Một web gồm 3 khu, dùng chung một nguồn dữ liệu:
 | `quan-ly.html` | Nhân viên công ty | Xem **tất cả** đơn (tên, SĐT, địa chỉ, số lượng, ghi chú), đổi trạng thái (đơn Đã giao sang tab riêng), quản lý **thành viên**, sửa đơn, theo dõi thanh toán (COD / chuyển khoản, đã thu hay chưa), tạo đơn hộ khách gọi Zalo, sửa giá; admin cấp quyền nhân viên |
 
 Công nghệ: HTML/CSS/JS thuần (ES module, không cần build) + **Supabase** (Postgres, Auth, Realtime).
-Hosting: **GitHub Pages** (miễn phí, tên miền `ten-ban.github.io`).
+Hosting: **GitHub Pages** (repo `kiwityky/webapp-cua-co-thuy`), tên miền riêng **https://cuacothuy.shop** (file `CNAME`).
 
 ## Phân quyền (bảo mật nằm ở CSDL, không chỉ ở giao diện)
 - Khách: chỉ đọc được đơn của chính mình (Row Level Security).
@@ -39,7 +39,7 @@ Nếu đã chạy bản cũ (điểm lưu trong tài khoản khách), cần ch�
 1. Vào https://supabase.com → New project (chọn region Singapore).
 2. **SQL Editor** → dán toàn bộ `supabase/schema.sql` → Run.
 3. **Authentication → Sign In / Providers → Email**: bật Email. Muốn khách đăng ký xong dùng ngay thì tắt *Confirm email*.
-4. **Authentication → URL Configuration**: Site URL = `https://ten-ban.github.io/ten-repo/`.
+4. **Authentication → URL Configuration**: Site URL = `https://cuacothuy.shop`; Redirect URLs thêm `https://cuacothuy.shop/**` và `https://www.cuacothuy.shop/**`.
 5. **Project Settings → API**: chép *Project URL* và *anon public key* vào `js/config.js`.
 
 ## 2. Tạo admin đầu tiên
@@ -59,12 +59,12 @@ git remote add origin https://github.com/<user>/<repo>.git
 git push -u origin main
 ```
 GitHub → repo → **Settings → Pages** → Source: *Deploy from a branch*, Branch `main` / `(root)` → Save.
-Vài phút sau web chạy ở `https://<user>.github.io/<repo>/`.
+Vài phút sau web chạy ở `https://cuacothuy.shop` (file `CNAME` đã khai báo tên miền).
 
 Lưu ý:
 - Gói GitHub miễn phí chỉ bật Pages cho **repo public**, nên mọi file trong repo ai cũng xem được. Chỉ để code ở đây, **tuyệt đối không commit dữ liệu khách hàng** hay `service_role` key.
 - `anon key` trong `js/config.js` công khai được **chỉ vì** mọi bảng đã bật Row Level Security. Không tắt RLS.
-- Muốn tên miền riêng (vd. `cuacothuy.vn`): mua domain rồi khai báo ở Settings → Pages → Custom domain.
+- Tên miền `cuacothuy.shop` (mua ở Porkbun): DNS gồm 4 bản ghi A cho `@` → `185.199.108.153`, `185.199.109.153`, `185.199.110.153`, `185.199.111.153` và CNAME `www` → `kiwityky.github.io`. Ở Settings → Pages → Custom domain nhập `cuacothuy.shop`, bật *Enforce HTTPS*. Không xóa file `CNAME`.
 - Gói free của Supabase tạm dừng project nếu 7 ngày không có truy cập; vào dashboard bấm Restore là chạy lại.
 
 ## Chạy thử trên máy
