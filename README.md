@@ -32,6 +32,11 @@ Hosting: **GitHub Pages** (repo `kiwityky/webapp-cua-co-thuy`), tên miền riê
 - Khi **Sửa đơn**, nhân viên sửa được giá bán (đ/kg) của từng dòng cho khớp thực tế.
 - Lần đầu chạy, giá vốn được suy ngược từ giá bán cũ (để giá không đổi). Nhân viên nhập lại giá vốn thật rồi bấm Lưu.
 
+## Ảnh sản phẩm và tải ảnh bảng giá
+- Tab **Sản phẩm** có cột **Ảnh**: chọn ảnh hiện trên trang chủ cho từng loại cua (ảnh lấy từ `js/images.js`). Để "Tự động" thì: loại cũ dùng ảnh mặc định theo tên, loại mới có chữ "gạch" dùng ảnh gạch son, loại khác hiện logo. Ảnh nào tải lỗi cũng tự thay bằng logo, không để ô trống.
+- Cần chạy lại **toàn bộ** `supabase/schema.sql` (thêm cột `products.image`) thì cột Ảnh mới chọn được; chưa chạy thì ô chọn bị khóa, trang chủ vẫn hiện ảnh tự động.
+- Dưới bảng giá trang chủ có nút **Tải ảnh bảng giá**: tạo ảnh PNG (khổ 1240px) của bảng giá đang hiện, có ngày áp dụng. Trên điện thoại sẽ mở bảng chia sẻ để lưu ảnh hoặc gửi Zalo; máy tính thì tải file `bang-gia-cua-co-thuy-<ngày>.png`.
+
 ## Cập nhật từ bản cũ
 Nếu đã chạy bản cũ (điểm lưu trong tài khoản khách), cần chạy lại **toàn bộ** `supabase/schema.sql` trong SQL Editor. Chạy lại an toàn, không mất đơn hay sản phẩm: file tự tạo thành viên từ các đơn đã giao trước đó và tính lại điểm cho từng thành viên. Cột điểm cũ trong `profiles` bị bỏ. Sau đó, vào tab **Thành viên** gắn email cho những khách đã có tài khoản để họ thấy lại điểm.
 

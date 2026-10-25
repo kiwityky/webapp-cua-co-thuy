@@ -29,6 +29,16 @@ export const PRODUCT_IMAGES = {
   'Cua gạch': 'gach-son-dia-2',
 };
 
+// Ảnh của 1 sản phẩm: products.image (nhân viên chọn ở quan-ly.html) → PRODUCT_IMAGES theo tên
+// → đoán theo tên (sản phẩm mới có chữ "gạch") → null (trang chủ hiện logo thay ảnh).
+export function productImageName(p = {}) {
+  if (p.image && IMAGES[p.image]) return p.image;
+  const byName = PRODUCT_IMAGES[p.name];
+  if (byName && IMAGES[byName]) return byName;
+  if (/gạch/i.test(p.name || '')) return 'gach-son-do';
+  return null;
+}
+
 // Thứ tự hiển thị thư viện ảnh
 export const GALLERY = [
   'cua-song-day-rut',

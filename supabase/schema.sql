@@ -514,6 +514,8 @@ exception when duplicate_object then null; end $$;
 --   giá bán = giá vốn × (1 + % lãi), làm tròn LÊN bội số 10.000đ.
 -- Bảng product_costs chỉ nhân viên đọc được (khách không thấy giá vốn).
 alter table public.products add column if not exists price_updated_at timestamptz not null default now();
+-- Ảnh hiển thị trên trang chủ: khóa trong js/images.js (IMAGES); null = tự chọn theo tên, không có thì hiện logo
+alter table public.products add column if not exists image text;
 
 create table if not exists public.product_costs (
   product_id  bigint primary key references public.products(id) on delete cascade,

@@ -2,7 +2,7 @@
 // Mọi thao tác DOM đều kiểm tra phần tử tồn tại.
 import { esc, money, toast, loadProducts, initNav, applyShopLinks, initAccountNav } from './common.js';
 import * as cart from './cart.js';
-import { renderPriceBoard } from './price-board.js';
+import { renderPriceBoard, initPriceDownload } from './price-board.js';
 import { sellPrice } from './pricing.js';
 
 // images.js do Tác vụ 2 tạo; nếu thiếu, trang vẫn chạy (không ảnh)
@@ -26,14 +26,18 @@ function skeleton(n = 6) {
     </article>`).join('');
 }
 
+// Ô thay ảnh khi sản phẩm chưa có ảnh hoặc ảnh tải lỗi
+const MEDIA_PH = '<span class="media-ph"><img src="assets/logo.svg" alt="" width="160" height="160" loading="lazy"></span>';
+
 function productCard(p) {
-  const imgName = IMG.PRODUCT_IMAGES?.[p.name];
+  const imgName = IMG.productImageName ? IMG.productImageName(p) : IMG.PRODUCT_IMAGES?.[p.name];
   let media = '';
   if (imgName && IMG.IMAGES?.[imgName]) {
     try {
       media = IMG.picture(imgName, { sizes: '(max-width:600px) 100vw, (max-width:960px) 50vw, 360px' }) || '';
     } catch { media = ''; }
   }
+  media ||= MEDIA_PH;
   return `
     <article class="product-card" data-id="${esc(p.id)}">
       <div class="product-media">${media}${p.badge ? `<span class="badge">${esc(p.badge)}</span>` : ''}</div>
@@ -63,7 +67,13 @@ async function initProducts() {
     ? products.map(productCard).join('')
     : '<p class="muted">Xem bảng giá bên dưới hoặc nhắn Zalo.</p>';
   grid.removeAttribute('aria-busy');
+  // Ảnh sản phẩm lỗi (file thiếu, mạng chập chờn) → thay bằng logo, không để ô trống
+  grid.addEventListener('error', (e) => {
+    const pic = e.target.closest?.('.product-media picture');
+    if (pic) pic.outerHTML = MEDIA_PH;
+  }, true);
   try { renderPriceBoard(byId('priceBoard'), products); } catch (err) { console.error(err); }
+  safe(() => initPriceDownload(byId('pbDownload'), byId('priceBoard')));
 
   const note = byId('priceNote');
   if (note && !note.textContent.trim()) {
@@ -81,7 +91,7 @@ async function initProducts() {
   });
 }
 
-/* ---------------- Tab Cua sống / Món chế biến ---------------- */
+/* ---------------- Tab danh mục (Cua sống / Món chế biến) ---------------- */
 function initTabs() {
   const tabs = [...document.querySelectorAll('.cat-tab[data-cat]')];
   if (!tabs.length) return;
@@ -126,7 +136,7 @@ function initTabs() {
     select(tabs[j].dataset.cat, true);
   });
 
-  // Link nav có data-cat (vd. "Món chế biến") → chuyển tab, để anchor #san-pham tự cuộn
+  // Link nav có data-cat (vd. "Sản phẩm") → chuyển tab, để anchor #san-pham tự cuộn
   document.querySelectorAll('a[data-cat]').forEach((a) =>
     a.addEventListener('click', () => select(a.dataset.cat)));
 

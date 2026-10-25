@@ -1,7 +1,9 @@
 #!/usr/bin/env node
-// Kiểm thử bảng giá: bảng giá HTML trang chủ, tab "Sản phẩm & giá" (giá vốn + % lãi) và sửa đơn giá trong đơn.
+// Kiểm thử bảng giá: bảng giá HTML trang chủ + nút tải ảnh PNG, ảnh dự phòng cho sản phẩm mới,
+// tab "Sản phẩm & giá" (giá vốn + % lãi, chọn ảnh) và sửa đơn giá trong đơn.
 // Chạy: node tools/test/bang-gia.mjs   (từ thư mục webapp)
-// Biến môi trường tuỳ chọn: OUT_DIR (mặc định ../webapp-test), CHROME_PATH.
+// Biến môi trường tuỳ chọn: OUT_DIR (mặc định ../webapp-test), CHROME_PATH,
+// HTML2CANVAS (file html2canvas.min.js cục bộ; không có thì tải từ cdnjs), REAL_FONTS=1 (tải font Google thật).
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -37,6 +39,11 @@ function findChrome() {
   return undefined;
 }
 const { chromium } = loadPlaywright();
+function findHtml2canvas() {
+  if (process.env.HTML2CANVAS) return process.env.HTML2CANVAS;
+  try { return createRequire(import.meta.url).resolve('html2canvas/dist/html2canvas.min.js'); } catch { return null; }
+}
+const H2C_FILE = findHtml2canvas();
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.json': 'application/json' };
@@ -82,7 +89,11 @@ const DATA = {
   members: MEMBERS,
   products: [
     { id: 1, name: 'Cua don', description: '5–6 con/kg', price: 240000, unit: 'kg', badge: null, sort: 1, active: true, price_updated_at: '2026-10-20T03:00:00Z' },
-    { id: 6, name: 'Cua gạch', description: '3–4 con/kg · gạch son đỏ', price: 600000, unit: 'kg', badge: 'Đặc biệt', sort: 6, active: true, price_updated_at: '2026-10-21T03:00:00Z' },
+    { id: 6, name: 'Cua gạch', description: '3–4 con/kg · gạch son đỏ', price: 600000, unit: 'kg', badge: 'Đặc biệt', sort: 6, active: true, price_updated_at: '2026-10-21T03:00:00Z', image: null },
+    // Sản phẩm mới chưa có trong js/images.js
+    { id: 7, name: 'Cua gạch nhỏ', description: '3-4 con/kg · gạch son đỏ', price: 690000, unit: 'kg', badge: 'Đặc biệt', sort: 7, active: true, price_updated_at: '2026-10-21T03:00:00Z', image: null },
+    { id: 8, name: 'Cua cốm', description: 'Mùa cốm', price: 450000, unit: 'kg', badge: null, sort: 8, active: true, price_updated_at: '2026-10-21T03:00:00Z', image: null },
+    { id: 9, name: 'Cua tứ', description: 'Ảnh hỏng', price: 340000, unit: 'kg', badge: null, sort: 9, active: true, price_updated_at: '2026-10-21T03:00:00Z', image: 'gach-vang' },
   ],
   product_costs: [{ product_id: 1, cost: 208000, markup_pct: 15 }, { product_id: 6, cost: 500000, markup_pct: 20 }],
   profiles: [{ id: 'staff-1', full_name: 'NV Test', role: 'staff' }],
@@ -184,19 +195,24 @@ async function newPage(w, h) {
     // js/config.js gốc còn giá trị mẫu → đổi sang cấu hình giả để trang nạp supabase-js (đã được stub)
     if (url === origin + '/js/config.js')
       return route.fulfill({ status: 200, contentType: 'text/javascript', body: CONFIG });
+    // Ảnh hỏng giả lập: thẻ sản phẩm phải tự thay bằng logo
+    if (url.startsWith(origin + '/assets/img/gach-vang-')) return route.fulfill({ status: 404, body: '' });
     if (url.startsWith(origin)) return route.continue();
+    if (url.includes('/html2canvas/'))
+      return H2C_FILE ? route.fulfill({ status: 200, contentType: 'text/javascript', body: fs.readFileSync(H2C_FILE) }) : route.continue();
     if (/^https:\/\/cdn\.jsdelivr\.net\/npm\/@supabase\/supabase-js@[^/]+\/\+esm/.test(url))
       return route.fulfill({ status: 200, contentType: 'text/javascript', headers: { 'access-control-allow-origin': '*' }, body: STUB });
+    if (process.env.REAL_FONTS && /fonts\.(googleapis|gstatic)\.com/.test(url)) return route.continue();
     if (/fonts\.(googleapis|gstatic)\.com/.test(url))
       return route.fulfill({ status: 200, contentType: url.includes('googleapis') ? 'text/css' : 'font/woff2', headers: { 'access-control-allow-origin': '*' }, body: '' });
     return route.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*' }, body: '' });
   });
   const page = await context.newPage();
   const errors = [];
-  page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
+  page.on('console', (m) => { if (m.type() === 'error' && !/404/.test(m.text())) errors.push('console: ' + m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + (e.message || e)));
   page.on('requestfailed', (r) => errors.push('requestfailed: ' + r.url()));
-  page.on('response', (r) => { if (r.status() >= 400) errors.push(`HTTP ${r.status()}: ${r.url()}`); });
+  page.on('response', (r) => { if (r.status() >= 400 && !r.url().includes('/assets/img/gach-vang-')) errors.push(`HTTP ${r.status()}: ${r.url()}`); });
   page.dialogs = [];
   page.dialogAnswer = true;
   page.on('dialog', async (d) => { page.dialogs.push(d.message()); await (page.dialogAnswer ? d.accept() : d.dismiss()); });
@@ -219,14 +235,46 @@ try {
     await page.goto(origin + '/index.html', { waitUntil: 'load' });
     await page.waitForSelector('#priceBoard .pb-row', { timeout: 8000 });
     const rows = await page.locator('#priceBoard .pb-row').allInnerTexts();
-    check(`${w}px: bảng giá hiện đúng 2 loại từ CSDL`, rows.length === 2 && rows[0].includes('Cua don') && rows[0].includes('240.000đ') && rows[1].includes('600.000đ'), rows.join(' | '));
+    check(`${w}px: bảng giá hiện đủ ${DATA.products.length} loại từ CSDL`, rows.length === DATA.products.length && rows[0].includes('Cua don') && rows[0].includes('240.000đ') && rows[1].includes('600.000đ'), rows.join(' | '));
     check(`${w}px: không còn ảnh bảng giá tĩnh`, (await page.locator('img.pricelist').count()) === 0);
-    check(`${w}px: Cua gạch (Đặc biệt) được làm nổi`, (await page.locator('#priceBoard .pb-hot').count()) === 1);
+    check(`${w}px: loại Đặc biệt được làm nổi`, (await page.locator('#priceBoard .pb-hot').count()) === 2);
     check(`${w}px: ngày áp dụng = lần đổi giá gần nhất (21/10/2026)`, (await text(page, '#priceBoard .pb-date')).includes('21/10/2026'), await text(page, '#priceBoard .pb-date'));
     check(`${w}px: thẻ sản phẩm cùng giá với bảng`, (await text(page, '#products')).includes('240.000đ'));
+    // Menu: "Sản phẩm", "Bảng giá"
+    const nav = await page.locator('#mainNav').evaluate((n) => n.textContent);
+    check(`${w}px: menu đổi tên Sản phẩm / Bảng giá`, nav.includes('Sản phẩm') && nav.includes('Bảng giá') && !nav.includes('Cua sống') && !nav.includes('Món chế biến'), nav.replace(/\s+/g, ' '));
+    check(`${w}px: menu Bảng giá trỏ tới #bang-gia`, (await page.locator('#mainNav a', { hasText: 'Bảng giá' }).getAttribute('href')) === '#bang-gia');
+
+    // Ảnh sản phẩm: sản phẩm mới không còn ô trống
+    await page.waitForTimeout(800);
+    const media = await page.locator('#products .product-card').evaluateAll((cards) => cards.map((c) => {
+      const img = c.querySelector('.product-media img');
+      return { name: c.querySelector('h3').textContent, ph: !!c.querySelector('.media-ph'), src: img?.currentSrc || img?.src || '' };
+    }));
+    const m = (n) => media.find((x) => x.name === n) || {};
+    check(`${w}px: mọi thẻ sản phẩm đều có ảnh`, media.length === DATA.products.length && media.every((x) => x.src), JSON.stringify(media));
+    check(`${w}px: "Cua gạch nhỏ" dùng ảnh gạch son`, m('Cua gạch nhỏ').src.includes('gach-son-do') && !m('Cua gạch nhỏ').ph, JSON.stringify(m('Cua gạch nhỏ')));
+    check(`${w}px: sản phẩm lạ hiện logo`, m('Cua cốm').ph && m('Cua cốm').src.includes('logo'), JSON.stringify(m('Cua cốm')));
+    check(`${w}px: ảnh lỗi tự thay bằng logo`, m('Cua tứ').ph, JSON.stringify(m('Cua tứ')));
+
     check(`${w}px: không cuộn ngang`, await noHScroll(page));
-    check(`${w}px: không lỗi console`, errors.length === 0, errors.join(' || '));
     await page.locator('#bang-gia').screenshot({ path: path.join(OUT, `bang-gia-html-${w}.png`) });
+    await page.locator('#san-pham').screenshot({ path: path.join(OUT, `san-pham-${w}.png`) });
+
+    // Nút tải ảnh bảng giá
+    const btn = page.locator('#pbDownload');
+    check(`${w}px: nút "Tải ảnh bảng giá" ngay dưới bảng giá`, await btn.isEnabled() && await page.evaluate(() =>
+      document.querySelector('#priceBoard').nextElementSibling?.contains(document.querySelector('#pbDownload'))));
+    if (w <= 600) await page.evaluate(() => { navigator.canShare = undefined; }); // bảng chia sẻ không chạy trong headless → tải file
+    const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 20000 }), btn.click()]);
+    const file = path.join(OUT, `bang-gia-tai-ve-${w}.png`);
+    await dl.saveAs(file);
+    const buf = fs.readFileSync(file);
+    const pngW = buf.readUInt32BE(16), pngH = buf.readUInt32BE(20);
+    check(`${w}px: tải về PNG khổ 620px ×2 (${pngW}×${pngH})`, buf.subarray(1, 4).toString() === 'PNG' && pngW === 1240 && pngH > 1200, `${pngW}×${pngH}`);
+    check(`${w}px: tên file có ngày áp dụng`, dl.suggestedFilename() === 'bang-gia-cua-co-thuy-2026-10-21.png', dl.suggestedFilename());
+    check(`${w}px: nút trở lại bình thường`, (await btn.innerText()).includes('Tải ảnh bảng giá') && await btn.isEnabled());
+    check(`${w}px: không lỗi console`, errors.length === 0, errors.join(' || '));
     await context.close();
   }
 
@@ -236,6 +284,16 @@ try {
   await page.waitForSelector('#orderRows [data-edit]', { timeout: 8000 });
   await page.click('#nav [data-tab=products]');
   await page.waitForSelector('#productRows tr [name=cost]');
+  check('tab sản phẩm có cột chọn ảnh', (await page.locator('#productRows select[name=image]:not([disabled])').count()) === DATA.products.length);
+  check('ảnh đã chọn được giữ', (await page.inputValue('#productRows tr[data-id="9"] [name=image]')) === 'gach-vang');
+  await page.selectOption('#productRows tr[data-id="8"] [name=image]', 'mai-cua-gach');
+  check('đổi ảnh → ảnh nhỏ cập nhật', (await page.getAttribute('#productRows tr[data-id="8"] .pimg', 'src')).includes('mai-cua-gach'));
+  await page.fill('#productRows tr[data-id="8"] [name=cost]', '400000');
+  await page.click('#productRows tr[data-id="8"] button');
+  await page.waitForTimeout(300);
+  const pimg = (await calls(page)).find((c) => c.type === 'update' && c.table === 'products');
+  check('Lưu gửi products.image', pimg?.patch?.image === 'mai-cua-gach', JSON.stringify(pimg));
+  await page.evaluate(() => { window.__calls.length = 0; });
   check('tab sản phẩm hiện giá vốn và % lãi', (await page.inputValue('#productRows tr:first-child [name=cost]')) === '208000'
     && (await page.inputValue('#productRows tr:first-child [name=markup_pct]')) === '15');
   await page.fill('#productRows tr:first-child [name=cost]', '200000');

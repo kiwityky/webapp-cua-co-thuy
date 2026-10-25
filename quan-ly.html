@@ -70,9 +70,9 @@
 
     <section id="tab-products" class="tab hidden">
       <h2>Sản phẩm &amp; giá</h2>
-      <p class="muted">Nhập <b>giá vốn</b> (giá mua vào). Giá bán = giá vốn × (1 + % lãi), làm tròn lên bội số 10.000đ, và tự cập nhật lên bảng giá trang chủ khi bấm Lưu.</p>
+      <p class="muted">Nhập <b>giá vốn</b> (giá mua vào). Giá bán = giá vốn × (1 + % lãi), làm tròn lên bội số 10.000đ, và tự cập nhật lên bảng giá trang chủ khi bấm Lưu. Cột <b>Ảnh</b>: chọn ảnh hiện trên trang chủ; để "Tự động" thì sản phẩm chưa có ảnh sẽ hiện logo.</p>
       <div class="table-wrap"><table>
-        <thead><tr><th>Tên</th><th>Mô tả</th><th>Giá vốn (đ)</th><th>% lãi</th><th>Giá bán</th><th>Nhãn</th><th>Thứ tự</th><th>Đang bán</th><th></th></tr></thead>
+        <thead><tr><th>Tên</th><th>Mô tả</th><th>Giá vốn (đ)</th><th>% lãi</th><th>Giá bán</th><th>Nhãn</th><th>Ảnh</th><th>Thứ tự</th><th>Đang bán</th><th></th></tr></thead>
         <tbody id="productRows"></tbody>
       </table></div>
       <button class="btn small" id="addProduct" style="margin-top:10px">+ Thêm sản phẩm</button>
@@ -102,6 +102,7 @@
     import { sb, esc, money, when, toast, $, STATUS, PAYMENT_METHOD, PAYMENT_STATUS, currentProfile, loadProducts, renderAuth } from './js/common.js';
     import { calcSellPrice } from './js/pricing.js';
     import { renderOrderForm } from './js/order-form.js';
+    import { IMAGES, imgUrl, productImageName } from './js/images.js';
 
     let me, orders = [], delivered = [], members = [];
 
@@ -491,9 +492,23 @@
       ]);
       if (error || e2) return toast((error || e2).message, true);
       const byPid = Object.fromEntries((costs || []).map((c) => [c.product_id, c]));
+      // Cột products.image có từ bản schema 25/10; CSDL chưa chạy lại schema thì không gửi cột này
+      hasImageCol = data.some((p) => 'image' in p);
       $('#productRows').innerHTML = data.map((p) => productRow(p, byPid[p.id])).join('');
       bindProductRows();
     }
+    let hasImageCol = false;
+    const imageOpts = (p) => {
+      const auto = productImageName({ ...p, image: null });
+      return `<option value="">Tự động${auto ? '' : ' (logo)'}</option>`
+        + Object.entries(IMAGES).map(([k, im]) =>
+          `<option value="${esc(k)}" ${p.image === k ? 'selected' : ''}>${esc(im.alt)}</option>`).join('');
+    };
+    const imageThumb = (p) => {
+      const k = productImageName(p);
+      return k ? `<img class="pimg" src="${imgUrl(k, 480, 'webp')}" alt="" width="44" height="44">`
+        : '<img class="pimg" src="assets/logo.svg" alt="" width="44" height="44">';
+    };
     const productRow = (p, c) => `
       <tr data-id="${p.id ?? ''}">
         <td><input name="name" value="${esc(p.name)}"></td>
@@ -502,6 +517,7 @@
         <td><input name="markup_pct" type="number" min="0" max="500" step="0.5" value="${c?.markup_pct != null ? Number(c.markup_pct) : 15}" style="width:76px"></td>
         <td class="sell-price" style="white-space:nowrap"><b>${p.price != null ? money(p.price) : '–'}</b></td>
         <td><input name="badge" value="${esc(p.badge)}"></td>
+        <td style="white-space:nowrap">${imageThumb(p)}<select name="image" style="width:150px;vertical-align:middle"${hasImageCol ? '' : ' disabled title="Chạy lại supabase/schema.sql để chọn ảnh"'}>${imageOpts(p)}</select></td>
         <td><input name="sort" type="number" value="${p.sort ?? 0}" style="width:70px"></td>
         <td><input name="active" type="checkbox" ${p.active !== false ? 'checked' : ''} style="width:auto"></td>
         <td><button class="btn small">Lưu</button></td>
@@ -514,9 +530,12 @@
           $('.sell-price', tr).innerHTML = `<b>${money(calcSellPrice(v('cost').value, v('markup_pct').value))}</b>`;
         };
         v('cost').oninput = v('markup_pct').oninput = preview;
+        const thumb = () => { $('.pimg', tr).outerHTML = imageThumb({ name: v('name').value, image: v('image').value || null }); };
+        v('image').onchange = v('name').onchange = thumb;
         $('button', tr).onclick = async () => {
           const row = { name: v('name').value.trim(), description: v('description').value,
             badge: v('badge').value || null, sort: Number(v('sort').value), active: v('active').checked };
+          if (hasImageCol) row.image = v('image').value || null;
           const cost = v('cost').value === '' ? null : Number(v('cost').value);
           const markup = Number(v('markup_pct').value);
           if (!row.name) return toast('Thiếu tên', true);
